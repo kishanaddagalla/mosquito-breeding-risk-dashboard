@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mosquito Breeding Risk Detection System | IoT Dashboard</title>
+  <meta name="description" content="IoT Monitoring Dashboard and Mosquito Breeding Risk Detection System powered by ESP8266, SQLite, and Flask.">
+  
+  <!-- Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Leaflet.js for GIS Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- Navigation Navbar -->
+    <header class="app-navbar">
+      <div class="brand-logo">
+        <div class="brand-icon-wrapper">
+          <i class="fa-solid fa-bug"></i>
+        </div>
+        <div>
+          <span>MOSQUITO RISK DETECT</span>
+          <div style="font-size: 0.72rem; color: var(--text-secondary); font-weight: 500;">IoT Bio-Environmental Sentinel</div>
+        </div>
+      </div>
+
+      <ul class="nav-links">
+        <li><button class="nav-btn active" data-tab="dashboard"><i class="fa-solid fa-chart-line"></i> Dashboard</button></li>
+        <li><button class="nav-btn" data-tab="map"><i class="fa-solid fa-map-location-dot"></i> GIS Map</button></li>
+        <li><button class="nav-btn" data-tab="history"><i class="fa-solid fa-clock-rotate-left"></i> Sensor Logs</button></li>
+        <li><button class="nav-btn" data-tab="analytics"><i class="fa-solid fa-chart-pie"></i> Analytics</button></li>
+        <li><button class="nav-btn" data-tab="operations"><i class="fa-solid fa-clipboard-check"></i> Operations</button></li>
+        <li><button class="nav-btn" data-tab="project"><i class="fa-solid fa-circle-info"></i> Project Docs</button></li>
+      </ul>
+
+      <div style="display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap;">
+        <!-- Species Profile Switcher -->
+        <div class="species-switcher-wrapper">
+          <i class="fa-solid fa-dna" style="color: var(--accent-cyan); font-size: 0.8rem;"></i>
+          <select id="speciesSwitcher" class="species-select" title="Switch Mosquito Species Profile" onchange="switchSpeciesProfile(this.value)">
+            <option value="aedes">Aedes aegypti</option>
+            <option value="culex">Culex quinquefasciatus</option>
+            <option value="anopheles">Anopheles stephensi</option>
+          </select>
+        </div>
+        <button id="btnOpenConfig" class="btn-secondary" title="Configure Risk Thresholds" data-role="Administrator">
+          <i class="fa-solid fa-sliders"></i> Thresholds
+        </button>
+        <div class="nav-status" id="connectionPill">
+          <div class="pulse-dot"></div>
+          <span id="connectionText">ESP8266 ONLINE</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Warning Alert Banner -->
+    <div class="alert-banner" id="alertBanner">
+      <div class="alert-content">
+        <i class="fa-solid fa-triangle-exclamation alert-icon"></i>
+        <span id="alertMsg">HIGH MOSQUITO BREEDING RISK DETECTED! Stagnant water present with favorable thermal conditions.</span>
+      </div>
+      <button class="alert-close" onclick="closeAlertBanner()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- ================= TAB 1: DASHBOARD ================= -->
+      <section id="dashboard-page" class="tab-page active">
+        
+        <!-- Hero Banner Section -->
+        <div class="hero-section">
+          <div class="hero-text">
+            <h1>Mosquito Breeding Risk Detection Dashboard</h1>
+            <p>Real-time IoT micro-environmental surveillance system monitoring temperature, humidity, and standing water presence to compute early vector infestation indices.</p>
+            
+            <div class="hero-controls">
+              <div class="live-telemetry-badge">
+                <div class="live-signal-icon"><i class="fa-solid fa-wifi"></i></div>
+                <div>
+                  <div style="font-weight: 700; font-size: 0.88rem; color: #ffffff;">LIVE HARDWARE FEED (ESP8266 / NodeMCU)</div>
+                  <div style="font-size: 0.78rem; color: var(--text-secondary);">Direct sensor telemetry from <code>/api/sensor</code> endpoint</div>
+                </div>
+              </div>
+              <div class="hero-insight">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span><strong>Action-first monitoring</strong><small>Review alerts, inspect sites, and keep sensors calibrated.</small></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-bg-anim">
+            <div class="floating-particle" style="top: 20%; left: 30%; animation-delay: 0s;"></div>
+            <div class="floating-particle" style="top: 60%; left: 70%; animation-delay: 2s;"></div>
+            <div class="floating-particle" style="top: 40%; left: 50%; animation-delay: 4s;"></div>
+          </div>
+        </div>
+
+        <!-- Dashboard Main Grid -->
+        <div class="dashboard-grid">
+          
+          <!-- Column 1: Animated Circular Risk Gauge -->
+          <div class="card risk-gauge-card">
+            <div class="card-header" style="width: 100%;">
+              <div class="card-title">
+                <i class="fa-solid fa-shield-virus"></i> Breeding Risk Level
+              </div>
+              <span style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600;">ALGORITHM v2.4</span>
+            </div>
+
+            <!-- SVG Gauge Component -->
+            <div class="gauge-container">
+              <svg class="gauge-svg" viewBox="0 0 200 200">
+                <!-- Background ring -->
+                <circle class="gauge-bg" cx="100" cy="100" r="90"></circle>
+                <!-- Animated Progress Ring -->
+                <circle id="gaugeProgress" class="gauge-progress" cx="100" cy="100" r="90"></circle>
+              </svg>
+
+              <div class="gauge-center-text">
+                <div class="risk-badge UNKNOWN" id="riskBadge">NO DATA</div>
+                <div class="gauge-score" id="gaugeScore">--</div>
+                <div class="gauge-label">BREEDING INDEX</div>
+              </div>
+            </div>
+
+            <!-- Risk Reason Explanation Box -->
+            <div class="risk-reason-box">
+              <strong><i class="fa-solid fa-circle-info" style="color: var(--accent-cyan);"></i> Diagnosis &amp; Reason:</strong>
+              <div id="riskReasonText">Waiting for sensor readings from NODE-01.</div>
+            </div>
+
+            <!-- Incubation Countdown Timer -->
+            <div class="incubation-timer-box" id="incubationBox">
+              <div class="incubation-header">
+                <i class="fa-solid fa-hourglass-half"></i>
+                <strong>Larval Incubation Estimate</strong>
+              </div>
+              <div class="incubation-content">
+                <div class="incubation-days" id="incubationDays">-- days</div>
+                <div class="incubation-label" id="incubationLabel">egg-to-adult hatching cycle</div>
+              </div>
+              <div class="incubation-species" id="incubationSpecies">Aedes aegypti</div>
+            </div>
+          </div>
+
+          <!-- Column 2: Sensor Metrics & Live Flow -->
+          <div>
+            <!-- Hardware Health Diagnostics Row -->
+            <div class="hw-health-bar">
+              <div class="hw-pill">
+                <i class="fa-solid fa-wifi hw-icon signal"></i>
+                <div>
+                  <div class="hw-val" id="hwRssi">-- dBm</div>
+                  <div class="hw-sub">Wi-Fi RSSI</div>
+                </div>
+              </div>
+              <div class="hw-pill">
+                <i class="fa-solid fa-battery-three-quarters hw-icon battery" id="batteryIcon"></i>
+                <div>
+                  <div class="hw-val" id="hwBattery">--%</div>
+                  <div class="hw-sub">Battery</div>
+                </div>
+              </div>
+              <div class="hw-pill">
+                <i class="fa-solid fa-location-dot hw-icon node"></i>
+                <div>
+                  <div class="hw-val" id="hwNodeId">NODE-01</div>
+                  <div class="hw-sub">Active Node</div>
+                </div>
+              </div>
+              <div class="hw-pill">
+                <button class="btn-wiring" id="btnWiring" onclick="openWiringDiagram()" title="View Pin Wiring Diagram">
+                  <i class="fa-solid fa-plug-circle-bolt"></i> Wiring
+                </button>
+              </div>
+            </div>
+
+            <div class="metrics-grid">
+              
+              <!-- Metric 1: Temperature -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span>TEMPERATURE</span>
+                  <div class="metric-icon icon-temp"><i class="fa-solid fa-temperature-three-quarters"></i></div>
+                </div>
+                <div class="metric-value-container">
+                  <div class="metric-value" id="valTemp">--°C</div>
+                </div>
+                <div class="metric-sub">Optimal vector range: 25.0°C – 32.0°C</div>
+              </div>
+
+              <!-- Metric 2: Humidity -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span>RELATIVE HUMIDITY</span>
+                  <div class="metric-icon icon-hum"><i class="fa-solid fa-droplet-percent"></i></div>
+                </div>
+                <div class="metric-value-container">
+                  <div class="metric-value" id="valHumidity">--%</div>
+                </div>
+                <div class="metric-sub">Survival threshold: ≥ 65%</div>
+              </div>
+
+              <!-- Metric 3: Stagnant Water Status -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span>STAGNANT WATER</span>
+                  <div class="metric-icon icon-water"><i class="fa-solid fa-water"></i></div>
+                </div>
+                <div class="water-status-indicator">
+                  <div class="water-ripple-wrapper" id="waterRippleWrapper">
+                    <i class="fa-solid fa-faucet-drip" style="color: var(--accent-blue);"></i>
+                  </div>
+                  <div class="metric-value" id="valWater" style="font-size: 1.35rem;">WAITING</div>
+                </div>
+                <div class="metric-sub">Essential for Aedes oviposition</div>
+              </div>
+
+              <!-- Metric 4: Timestamp Info -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span>SYSTEM TIME</span>
+                  <div class="metric-icon icon-time"><i class="fa-regular fa-clock"></i></div>
+                </div>
+                <div class="metric-value-container">
+                  <div class="metric-value" id="liveClock" style="font-size: 1.4rem;">00:00:00</div>
+                </div>
+                <div class="metric-sub" id="liveDate">Oct 8, 2026</div>
+                <div style="font-size: 0.72rem; color: var(--accent-cyan); margin-top: 0.4rem;">
+                  Last Sync: <span id="lastUpdate">Waiting for sensor data</span>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Animated Environmental Relationship Flowchart -->
+            <div class="card system-flow-card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-diagram-project"></i> Multi-Factor Vector Risk Pipeline
+                </div>
+              </div>
+
+              <div class="flow-container">
+                <div class="flow-step">
+                  <div class="flow-node"><i class="fa-solid fa-cloud-sun-rain"></i></div>
+                  <div class="flow-title">Micro Climate</div>
+                  <div class="flow-desc">Ambient Conditions</div>
+                </div>
+
+                <div class="flow-arrow"><i class="fa-solid fa-chevron-right"></i></div>
+
+                <div class="flow-step">
+                  <div class="flow-node"><i class="fa-solid fa-microchip"></i></div>
+                  <div class="flow-title">NodeMCU Node</div>
+                  <div class="flow-desc">Water + Temp + Hum</div>
+                </div>
+
+                <div class="flow-arrow"><i class="fa-solid fa-chevron-right"></i></div>
+
+                <div class="flow-step">
+                  <div class="flow-node"><i class="fa-solid fa-gears"></i></div>
+                  <div class="flow-title">Flask Algorithm</div>
+                  <div class="flow-desc">Weighted Scoring</div>
+                </div>
+
+                <div class="flow-arrow"><i class="fa-solid fa-chevron-right"></i></div>
+
+                <div class="flow-step">
+                  <div class="flow-node" style="border-color: var(--risk-mod); color: var(--risk-mod);"><i class="fa-solid fa-shield-virus"></i></div>
+                  <div class="flow-title">Breeding Index</div>
+                  <div class="flow-desc">LOW / MOD / HIGH</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ================= TAB 2: GIS MAP ================= -->
+      <section id="map-page" class="tab-page">
+        <div class="map-header-bar">
+          <div>
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 1.4rem; margin: 0; color: var(--text-primary);">
+              <i class="fa-solid fa-map-location-dot" style="color: var(--accent-cyan);"></i> Multi-Node Geographic Surveillance Map
+            </h2>
+            <p style="font-size: 0.84rem; color: var(--text-secondary); margin: 0.3rem 0 0 0;">
+              Real-time risk level visualization across all deployed sensor nodes
+            </p>
+          </div>
+          <div style="display: flex; gap: 0.6rem; align-items: center;">
+            <button class="btn-secondary" onclick="refreshMapNodes()"><i class="fa-solid fa-rotate"></i> Refresh Nodes</button>
+            <button class="btn-secondary" onclick="requestCurrentLocation()"><i class="fa-solid fa-location-crosshairs"></i> Use My Location</button>
+            <button class="btn-secondary" onclick="toggleExampleNodePlacement()"><i class="fa-solid fa-map-pin"></i> Add Example Node</button>
+            <div class="map-legend">
+              <span class="legend-dot low"></span> LOW
+              <span class="legend-dot mod"></span> MODERATE
+              <span class="legend-dot high"></span> HIGH
+            </div>
+          </div>
+        </div>
+
+        <div class="map-layout">
+          <!-- Leaflet Map -->
+          <div id="gisMap" class="gis-map-container"></div>
+
+          <!-- Node Status Panel -->
+          <div class="node-panel">
+            <div class="node-panel-title"><i class="fa-solid fa-satellite-dish"></i> Node Status Panel</div>
+            <div id="nodePanelList">
+              <div style="color: var(--text-muted); padding: 1rem; text-align: center; font-size: 0.84rem;">Loading node data...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 3: HISTORY LOGS ================= -->
+      <section id="history-page" class="tab-page">
+        <div class="controls-bar">
+          <div class="filter-group">
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">Start Date:</label>
+            <input type="date" id="filterStartDate" class="form-control" onchange="fetchHistoryData()">
+
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">End Date:</label>
+            <input type="date" id="filterEndDate" class="form-control" onchange="fetchHistoryData()">
+
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">Risk Level:</label>
+            <select id="filterRiskLevel" class="form-control" onchange="fetchHistoryData()">
+              <option value="ALL">All Risk Levels</option>
+              <option value="LOW">LOW</option>
+              <option value="MODERATE">MODERATE</option>
+              <option value="HIGH">HIGH</option>
+            </select>
+          </div>
+
+          <div style="display: flex; gap: 0.6rem;">
+            <button class="btn-secondary" onclick="fetchHistoryData()"><i class="fa-solid fa-rotate"></i> Refresh</button>
+            <button class="btn-primary" onclick="exportToCSV()"><i class="fa-solid fa-file-csv"></i> Export CSV</button>
+            <button class="btn-secondary" onclick="exportPDFReport()" title="Generate PDF Audit Report">
+              <i class="fa-solid fa-file-pdf"></i> PDF Report
+            </button>
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="custom-table" id="historyTable">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Node</th>
+                <th>Temperature</th>
+                <th>Humidity</th>
+                <th>Water Detection</th>
+                <th>Risk Level</th>
+                <th>Risk Score</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= TAB 4: ANALYTICS ================= -->
+      <section id="analytics-page" class="tab-page">
+        <div class="charts-grid">
+          
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-temperature-high" style="color:#ef4444;"></i> Temperature Trend Over Time</div>
+            </div>
+            <div class="chart-container">
+              <canvas id="tempChart"></canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-water-lower" style="color:#06b6d4;"></i> Humidity Trend Over Time</div>
+            </div>
+            <div class="chart-container">
+              <canvas id="humidityChart"></canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-chart-line" style="color:#f59e0b;"></i> Mosquito Breeding Risk Score Timeline</div>
+            </div>
+            <div class="chart-container">
+              <canvas id="riskChart"></canvas>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-pie-chart" style="color:#10b981;"></i> Risk Level Category Distribution</div>
+            </div>
+            <div class="chart-container">
+              <canvas id="riskPieChart"></canvas>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ================= TAB 5: FIELD OPERATIONS ================= -->
+      <section id="operations-page" class="tab-page">
+        <div class="ops-header">
+          <div><div class="doc-badge"><i class="fa-solid fa-shield-heart"></i> FIELD RESPONSE CENTRE</div><h2>Operations &amp; prevention</h2><p>Turn monitoring signals into timely inspection and maintenance work.</p></div>
+          <div class="role-select"><i class="fa-solid fa-user-shield"></i><label for="roleSwitcher">ACTIVE ROLE</label><select id="roleSwitcher"><option value="Administrator">Administrator</option><option value="Field worker">Field worker</option><option value="Reviewer">Reviewer</option></select></div>
+        </div>
+        <div class="ops-kpis">
+          <article class="ops-kpi"><i class="fa-solid fa-bell"></i><span>UNACKNOWLEDGED ALERTS</span><strong id="opsAlertCount">—</strong></article>
+          <article class="ops-kpi"><i class="fa-solid fa-screwdriver-wrench"></i><span>OPEN INSPECTIONS</span><strong id="opsInspectionCount">—</strong></article>
+          <article class="ops-kpi"><i class="fa-solid fa-microchip"></i><span>DEPLOYED NODES</span><strong id="opsDeviceCount">—</strong></article>
+          <article class="ops-kpi forecast-kpi"><i class="fa-solid fa-cloud-sun"></i><span>24-HOUR OUTLOOK</span><strong id="opsForecast">—</strong><small id="opsForecastText">Calculating forecast…</small></article>
+        </div>
+
+        <div class="ops-summary-grid">
+          <article class="card ops-card summary-card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-shield-heart"></i> Site health summary</div>
+            </div>
+            <div class="summary-score" id="siteHealthScore">—</div>
+            <div class="summary-status" id="siteHealthStatus">Monitoring…</div>
+            <div class="summary-meta" id="siteHealthText">Collecting site-level diagnostics.</div>
+          </article>
+          <article class="card ops-card summary-card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-route"></i> Recommended response actions</div>
+            </div>
+            <div class="ops-list" id="recommendationList"><div class="empty-state">Loading recommended actions…</div></div>
+          </article>
+          <article class="card ops-card summary-card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-chart-column"></i> Node comparison</div>
+            </div>
+            <div class="ops-list" id="compareList"><div class="empty-state">Loading node comparison…</div></div>
+          </article>
+        </div>
+
+        <div class="ops-grid">
+          <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-triangle-exclamation"></i> Alert centre</div><button class="btn-secondary" onclick="loadOperations()">Refresh</button></div><div class="ops-list" id="alertList"><div class="empty-state">Loading alerts…</div></div></article>
+          <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-tower-broadcast"></i> Device health</div><span class="card-caption">Latest node telemetry</span></div><div class="ops-list" id="deviceList"><div class="empty-state">Loading devices…</div></div></article>
+          <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-person-circle-check"></i> Create site inspection</div></div><form id="inspectionForm" class="ops-form" data-role="Administrator,Field worker"><div class="form-grid"><label>Site name<input name="site_name" required placeholder="e.g. Drainage Basin"></label><label>Node<select name="node_id"><option>NODE-01</option></select></label></div><label>Observation notes<textarea name="notes" rows="3" placeholder="Describe water source or corrective action"></textarea></label><label>Photo evidence <input name="photo" type="file" accept="image/png,image/jpeg,image/webp"></label><button class="btn-primary" type="submit"><i class="fa-solid fa-plus"></i> Create inspection</button></form></article>
+          <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-list-check"></i> Inspection queue</div></div><div class="ops-list" id="inspectionList"><div class="empty-state">No inspections loaded.</div></div></article>
+          <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-sliders"></i> Sensor calibration</div></div><form id="calibrationForm" class="ops-form" data-role="Administrator"><div class="form-grid"><label>Node<select name="node_id"><option>NODE-01</option></select></label><label>Sensor<select name="sensor_name"><option>DHT22 temperature</option><option>DHT22 humidity</option><option>Water sensor</option></select></label><label>Offset<input name="offset_value" type="number" step="0.1" value="0"></label><label>Next due<input name="next_due" type="date" required></label></div><label>Notes<textarea name="notes" rows="2" placeholder="Reference instrument / procedure"></textarea></label><button class="btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save calibration</button></form></article>
+          <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-calendar-check"></i> Calibration register</div></div><div class="ops-list" id="calibrationList"><div class="empty-state">No calibration records.</div></div></article>
+        </div>
+      </section>
+
+      <!-- ================= TAB 6: PROJECT DOCUMENTATION ================= -->
+      <section id="project-page" class="tab-page">
+        
+        <!-- Documentation Header Controls -->
+        <div class="doc-header-bar">
+          <div>
+            <div class="doc-badge"><i class="fa-solid fa-file-contract"></i> ENGINEERING PROJECT SPECIFICATION</div>
+            <h2 class="doc-main-title">Mosquito Breeding Risk Detection System</h2>
+            <div style="font-size: 0.88rem; color: var(--text-secondary);">Comprehensive IoT Micro-Environmental Vector Monitoring Documentation</div>
+          </div>
+          <div class="doc-action-btns">
+            <button class="btn-secondary" onclick="switchTab('dashboard')">
+              <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+            </button>
+            <button class="btn-secondary" onclick="exportPDFReport()">
+              <i class="fa-solid fa-file-pdf"></i> PDF Report
+            </button>
+            <button class="btn-primary" onclick="printDocumentation()">
+              <i class="fa-solid fa-print"></i> Print Documentation
+            </button>
+          </div>
+        </div>
+
+        <!-- Documentation Reading Progress Bar -->
+        <div class="doc-progress-container">
+          <div class="doc-progress-bar" id="docProgressBar"></div>
+        </div>
+
+        <!-- Documentation Wrapper: Sidebar TOC + Main Content -->
+        <div class="doc-layout">
+          
+          <!-- Sticky Left Table of Contents (TOC) -->
+          <aside class="doc-toc-sidebar">
+            <div class="toc-title"><i class="fa-solid fa-list-ul"></i> Table of Contents</div>
+            <nav class="toc-nav">
+              <a href="#doc-sec-1" class="toc-link active"><span class="toc-num">01.</span> Project Overview</a>
+              <a href="#doc-sec-2" class="toc-link"><span class="toc-num">02.</span> Problem Statement</a>
+              <a href="#doc-sec-3" class="toc-link"><span class="toc-num">03.</span> Project Objectives</a>
+              <a href="#doc-sec-4" class="toc-link"><span class="toc-num">04.</span> Proposed Solution</a>
+              <a href="#doc-sec-5" class="toc-link"><span class="toc-num">05.</span> System Architecture</a>
+              <a href="#doc-sec-6" class="toc-link"><span class="toc-num">06.</span> Hardware Components</a>
+              <a href="#doc-sec-7" class="toc-link"><span class="toc-num">07.</span> Software Components</a>
+              <a href="#doc-sec-8" class="toc-link"><span class="toc-num">08.</span> Working Principle</a>
+              <a href="#doc-sec-9" class="toc-link"><span class="toc-num">09.</span> Risk Analysis Engine</a>
+              <a href="#doc-sec-10" class="toc-link"><span class="toc-num">10.</span> Block Diagram</a>
+              <a href="#doc-sec-11" class="toc-link"><span class="toc-num">11.</span> Data Flow Pipeline</a>
+              <a href="#doc-sec-12" class="toc-link"><span class="toc-num">12.</span> Web Dashboard</a>
+              <a href="#doc-sec-13" class="toc-link"><span class="toc-num">13.</span> API Communication</a>
+              <a href="#doc-sec-14" class="toc-link"><span class="toc-num">14.</span> Database Schema</a>
+              <a href="#doc-sec-15" class="toc-link"><span class="toc-num">15.</span> System Advantages</a>
+              <a href="#doc-sec-16" class="toc-link"><span class="toc-num">16.</span> Applications</a>
+              <a href="#doc-sec-17" class="toc-link"><span class="toc-num">17.</span> Technical Limitations</a>
+              <a href="#doc-sec-18" class="toc-link"><span class="toc-num">18.</span> Future Scope</a>
+              <a href="#doc-sec-19" class="toc-link"><span class="toc-num">19.</span> Expected Outcome</a>
+              <a href="#doc-sec-20" class="toc-link"><span class="toc-num">20.</span> Project Team</a>
+              <a href="#doc-sec-21" class="toc-link"><span class="toc-num">21.</span> References</a>
+            </nav>
+          </aside>
+
+          <!-- Main Documentation Content Body -->
+          <article class="doc-body" id="docBodyContainer">
+            
+            <!-- SECTION 1: PROJECT OVERVIEW -->
+            <section class="doc-card" id="doc-sec-1">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">01</span>
+                <h3><i class="fa-solid fa-bullseye"></i> Project Overview</h3>
+              </div>
+              <p>
+                The <strong>Mosquito Breeding Risk Detection System</strong> is an end-to-end Internet of Things (IoT) monitoring framework engineered to assess micro-climatic environmental conditions associated with vector mosquito reproduction. Mosquitoes, particularly species such as <em>Aedes aegypti</em> and <em>Culex</em>, require standing stagnant water, elevated relative humidity, and specific ambient thermal ranges to lay eggs (oviposition) and undergo larval incubation.
+              </p>
+              <p>
+                By deploying remote sensor nodes equipped with an ESP8266 / NodeMCU microcontroller, liquid detection probes, thermal sensors, and hygrometers, this system continuously evaluates the environment and calculates a dynamic <strong>Mosquito Breeding Risk Index (0-100%)</strong>. The resulting data is ingested by a Python Flask backend, stored in SQLite, and rendered on a real-time web dashboard to serve as an automated early vector risk indicator for public health officers and property managers.
+              </p>
+            </section>
+
+            <!-- SECTION 2: PROBLEM STATEMENT -->
+            <section class="doc-card" id="doc-sec-2">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">02</span>
+                <h3><i class="fa-solid fa-triangle-exclamation"></i> Problem Statement</h3>
+              </div>
+              <p>
+                Vector-borne illnesses such as Dengue, Chikungunya, Malaria, and Zika remain major global health threats. Standing stagnant water accumulated in drainage gutters, construction sites, storage tanks, and residential containers forms ideal oviposition sites for female mosquitoes.
+              </p>
+              <div class="doc-highlight-box warning">
+                <strong>Core Challenges:</strong>
+                <ul>
+                  <li><strong>Manual Field Inspection Bottlenecks:</strong> Physical door-to-door or site-by-site manual inspections are labor-intensive, reactive, expensive, and logistically unfeasible across large urban or rural sectors.</li>
+                  <li><strong>Invisible Micro-Climatic Spikes:</strong> High temperature and humidity combined with hidden standing water can accelerate mosquito larval incubation in as few as 4 to 7 days before human observation occurs.</li>
+                  <li><strong>Lack of Real-Time Warning:</strong> Traditional vector control relies on post-outbreak reporting rather than continuous predictive environmental surveillance.</li>
+                </ul>
+              </div>
+            </section>
+
+            <!-- SECTION 3: OBJECTIVES -->
+            <section class="doc-card" id="doc-sec-3">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">03</span>
+                <h3><i class="fa-solid fa-list-check"></i> Project Objectives</h3>
+              </div>
+              <div class="doc-grid-2col">
+                <div class="doc-mini-card">
+                  <i class="fa-solid fa-water icon-cyan"></i>
+                  <h4>Water Detection</h4>
+                  <p>Detect presence of standing/stagnant water at monitored locations using liquid sensors.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <i class="fa-solid fa-temperature-high icon-red"></i>
+                  <h4>Thermal Monitoring</h4>
+                  <p>Continuously measure ambient air temperature (°C) within vector survival windows.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <i class="fa-solid fa-droplet-percent icon-blue"></i>
+                  <h4>Humidity Monitoring</h4>
+                  <p>Track relative atmospheric humidity (%) critical for adult mosquito longevity.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <i class="fa-solid fa-gears icon-purple"></i>
+                  <h4>Condition Analysis</h4>
+                  <p>Analyze multi-factor environmental parameters against biological threshold matrices.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <i class="fa-solid fa-calculator icon-emerald"></i>
+                  <h4>Risk Index Estimation</h4>
+                  <p>Compute dynamic Mosquito Breeding Risk Index score (0-100%) and risk tier (LOW, MODERATE, HIGH).</p>
+                </div>
+                <div class="doc-mini-card">
+                  <i class="fa-solid fa-desktop icon-orange"></i>
+                  <h4>Real-Time Telemetry</h4>
+                  <p>Display live metrics, time logs, and visual SVG gauge indicators on a responsive web dashboard.</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- SECTION 4: PROPOSED SOLUTION -->
+            <section class="doc-card" id="doc-sec-4">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">04</span>
+                <h3><i class="fa-solid fa-lightbulb"></i> Proposed Solution</h3>
+              </div>
+              <p>
+                The proposed solution is an automated, low-power IoT environmental surveillance system. The ESP8266 / NodeMCU microcontroller acts as a remote telemetry node. It samples data from connected temperature, humidity, water, and real-time clock sensors, formats the readings into a structured JSON payload, and transmits the telemetry over Wi-Fi to a Flask REST API server.
+              </p>
+              <p>
+                The backend server executes a weighted risk analysis algorithm, persists the entry into an SQLite relational database, and exposes REST endpoints for the web dashboard. The web dashboard dynamically refreshes cards, risk status indicators, and warning banners to deliver early vector risk notifications.
+              </p>
+            </section>
+
+            <!-- SECTION 5: SYSTEM ARCHITECTURE -->
+            <section class="doc-card" id="doc-sec-5">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">05</span>
+                <h3><i class="fa-solid fa-sitemap"></i> System Architecture</h3>
+              </div>
+              <p>The interactive architecture pipeline below illustrates the end-to-end telemetry and processing flow:</p>
+              
+              <div class="arch-flow-diagram">
+                <div class="arch-node"><i class="fa-solid fa-microchip"></i><span>Sensors</span></div>
+                <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                <div class="arch-node"><i class="fa-solid fa-wifi"></i><span>ESP8266 NodeMCU</span></div>
+                <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                <div class="arch-node"><i class="fa-solid fa-cloud-arrow-up"></i><span>Wi-Fi Network</span></div>
+                <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                <div class="arch-node"><i class="fa-solid fa-server"></i><span>Flask REST API</span></div>
+                <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                <div class="arch-node"><i class="fa-solid fa-database"></i><span>SQLite DB</span></div>
+                <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                <div class="arch-node"><i class="fa-solid fa-brain"></i><span>Risk Analysis</span></div>
+                <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                <div class="arch-node"><i class="fa-solid fa-chart-line"></i><span>Web Dashboard</span></div>
+                <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                <div class="arch-node alert-node"><i class="fa-solid fa-bell"></i><span>Risk Alert</span></div>
+              </div>
+            </section>
+
+            <!-- SECTION 6: HARDWARE COMPONENTS -->
+            <section class="doc-card" id="doc-sec-6">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">06</span>
+                <h3><i class="fa-solid fa-microchip"></i> Hardware Components</h3>
+              </div>
+              <p>Detailed hardware specifications, purposes, and project roles:</p>
+
+              <div class="hw-components-grid">
+                
+                <div class="hw-card">
+                  <div class="hw-icon"><i class="fa-solid fa-microchip"></i></div>
+                  <h4>ESP8266 / NodeMCU</h4>
+                  <div class="hw-field"><strong>Purpose:</strong> Main System Microcontroller &amp; Wi-Fi SoC</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Reads digital/analog sensor signals, processes telemetry, and transmits JSON payloads over HTTP POST.</div>
+                </div>
+
+                <div class="hw-card">
+                  <div class="hw-icon"><i class="fa-solid fa-temperature-high"></i></div>
+                  <h4>Temperature Sensor (DHT11/DHT22)</h4>
+                  <div class="hw-field"><strong>Purpose:</strong> Ambient Thermal Measurement</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Measures ambient air temperature in °C to determine larval incubation velocity.</div>
+                </div>
+
+                <div class="hw-card">
+                  <div class="hw-icon"><i class="fa-solid fa-droplet-percent"></i></div>
+                  <h4>Humidity Sensor (DHT11/DHT22)</h4>
+                  <div class="hw-field"><strong>Purpose:</strong> Relative Humidity Measurement</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Measures relative air moisture (%) to evaluate adult vector lifespan and host-seeking activity.</div>
+                </div>
+
+                <div class="hw-card">
+                  <div class="hw-icon"><i class="fa-solid fa-water"></i></div>
+                  <h4>Water / Stagnant-Water Sensor</h4>
+                  <div class="hw-field"><strong>Purpose:</strong> Liquid Presence Detection</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Resistive raindrop/liquid plate placed in potential drainage sites to detect standing water required for egg laying.</div>
+                </div>
+
+                <div class="hw-card">
+                  <div class="hw-icon"><i class="fa-regular fa-clock"></i></div>
+                  <h4>DS3231 RTC Module</h4>
+                  <div class="hw-field"><strong>Purpose:</strong> Real-Time Hardware Clock</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Provides accurate timestamping for sensor readings during network disconnections or offline field logging.</div>
+                </div>
+
+                <div class="hw-card">
+                  <div class="hw-icon"><i class="fa-solid fa-battery-full"></i></div>
+                  <h4>9V Battery</h4>
+                  <div class="hw-field"><strong>Purpose:</strong> Portable Power Source</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Supplies direct DC power to the NodeMCU board for standalone field deployment.</div>
+                </div>
+
+                <div class="hw-card">
+                  <div class="hw-icon"><i class="fa-solid fa-plug"></i></div>
+                  <h4>9V Snap Connector with DC Plug</h4>
+                  <div class="hw-field"><strong>Purpose:</strong> Power Delivery Interface</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Connects the 9V battery securely to the VIN / DC barrel jack of the NodeMCU microcontroller.</div>
+                </div>
+
+                <div class="hw-card">
+                  <div class="hw-icon"><i class="fa-solid fa-diagram-nested"></i></div>
+                  <h4>Connecting Wires &amp; Breadboard</h4>
+                  <div class="hw-field"><strong>Purpose:</strong> Circuit Interconnection</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Routes power, ground, and I/O data lines between sensors, RTC module, and ESP8266 pins.</div>
+                </div>
+
+              </div>
+
+              <!-- View Wiring Diagram button -->
+              <div style="margin-top: 1.2rem; text-align: center;">
+                <button class="btn-primary" onclick="openWiringDiagram()">
+                  <i class="fa-solid fa-plug-circle-bolt"></i> View Interactive Pin Wiring Diagram
+                </button>
+              </div>
+            </section>
+
+            <!-- SECTION 7: SOFTWARE COMPONENTS -->
+            <section class="doc-card" id="doc-sec-7">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">07</span>
+                <h3><i class="fa-solid fa-code"></i> Software Components</h3>
+              </div>
+              <div class="sw-grid">
+                <div class="sw-card">
+                  <h4><i class="fa-solid fa-laptop-code"></i> Arduino IDE</h4>
+                  <p>Development environment used to compile and flash C++ firmware sketches to the ESP8266 board.</p>
+                </div>
+                <div class="sw-card">
+                  <h4><i class="fa-solid fa-terminal"></i> ESP8266 C++ Firmware</h4>
+                  <p>Embedded C++ application managing sensor I/O sampling, HTTP client request headers, and JSON formatting.</p>
+                </div>
+                <div class="sw-card">
+                  <h4><i class="fa-brands fa-python"></i> Python Flask Backend</h4>
+                  <p>Lightweight WSGI Web Application Framework hosting REST API endpoints and computing vector risk algorithms.</p>
+                </div>
+                <div class="sw-card">
+                  <h4><i class="fa-brands fa-html5"></i> HTML5</h4>
+                  <p>Semantic markup foundation structuring the dashboard, history tables, and project documentation.</p>
+                </div>
+                <div class="sw-card">
+                  <h4><i class="fa-brands fa-css3-alt"></i> CSS3</h4>
+                  <p>Custom CSS variables, flexbox/grid layouts, micro-animations, glassmorphic styling, and `@media print` rules.</p>
+                </div>
+                <div class="sw-card">
+                  <h4><i class="fa-brands fa-js"></i> JavaScript (ES6+)</h4>
+                  <p>Asynchronous client-side logic executing live fetch polling, SVG gauge rendering, counter animations, and tab navigation.</p>
+                </div>
+                <div class="sw-card">
+                  <h4><i class="fa-solid fa-database"></i> SQLite Database</h4>
+                  <p>Relational disk database storing time-stamped telemetry logs, configuration thresholds, and index parameters.</p>
+                </div>
+                <div class="sw-card">
+                  <h4><i class="fa-solid fa-network-wired"></i> REST API</h4>
+                  <p>JSON HTTP API architecture supporting sensor telemetry POST ingestion and history GET queries.</p>
+                </div>
+                <div class="sw-card">
+                  <h4><i class="fa-solid fa-chart-pie"></i> Chart.js</h4>
+                  <p>JavaScript visualization library powering time-series temperature, humidity, risk score, and distribution graphs.</p>
+                </div>
+                <div class="sw-card">
+                  <h4><i class="fa-solid fa-map"></i> Leaflet.js</h4>
+                  <p>Open-source interactive map library for GIS multi-node sensor deployment visualization using OpenStreetMap tiles.</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- SECTION 8: WORKING PRINCIPLE -->
+            <section class="doc-card" id="doc-sec-8">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">08</span>
+                <h3><i class="fa-solid fa-gears"></i> Working Principle</h3>
+              </div>
+              <p>The operational lifecycle of the system follows an 8-step continuous feedback loop:</p>
+
+              <!-- Animated Vertical Timeline -->
+              <div class="timeline-container">
+                
+                <div class="timeline-item">
+                  <div class="timeline-marker">1</div>
+                  <div class="timeline-content">
+                    <h4>Step 1: Environmental Sampling</h4>
+                    <p>Physical sensors (DHT11/DHT22 and liquid water sensor) continuously gather thermal, hygrometric, and water presence state data from the monitored environment.</p>
+                  </div>
+                </div>
+
+                <div class="timeline-item">
+                  <div class="timeline-marker">2</div>
+                  <div class="timeline-content">
+                    <h4>Step 2: ESP8266 Sensor Input Reading</h4>
+                    <p>The ESP8266 microcontroller reads analog voltage from the water probe pin and digital pulse streams from the DHT sensor and DS3231 RTC clock module.</p>
+                  </div>
+                </div>
+
+                <div class="timeline-item">
+                  <div class="timeline-marker">3</div>
+                  <div class="timeline-content">
+                    <h4>Step 3: Microcontroller Data Processing</h4>
+                    <p>Firmware validates data boundaries, converts raw analog values to boolean water presence status, and packages data into a formatted JSON string payload.</p>
+                  </div>
+                </div>
+
+                <div class="timeline-item">
+                  <div class="timeline-marker">4</div>
+                  <div class="timeline-content">
+                    <h4>Step 4: Wi-Fi Transmission</h4>
+                    <p>The ESP8266 establishes a Wi-Fi connection and issues an HTTP POST request carrying JSON payload data to the server endpoint (<code>/api/sensor</code>).</p>
+                  </div>
+                </div>
+
+                <div class="timeline-item">
+                  <div class="timeline-marker">5</div>
+                  <div class="timeline-content">
+                    <h4>Step 5: Backend Ingestion &amp; SQLite Storage</h4>
+                    <p>The Python Flask server parses the request, timestamps the entry, and inserts the raw readings into the SQLite <code>sensor_readings</code> table.</p>
+                  </div>
+                </div>
+
+                <div class="timeline-item">
+                  <div class="timeline-marker">6</div>
+                  <div class="timeline-content">
+                    <h4>Step 6: Risk Analysis Engine Execution</h4>
+                    <p>The backend evaluates environmental parameters against biological scoring weights to calculate the total risk score (0-100%) and risk category (LOW, MODERATE, HIGH).</p>
+                  </div>
+                </div>
+
+                <div class="timeline-item">
+                  <div class="timeline-marker">7</div>
+                  <div class="timeline-content">
+                    <h4>Step 7: Web Dashboard Rendering</h4>
+                    <p>The web dashboard fetches the latest telemetry via AJAX polling and updates live metric cards, the SVG risk gauge, and analytics charts.</p>
+                  </div>
+                </div>
+
+                <div class="timeline-item">
+                  <div class="timeline-marker">8</div>
+                  <div class="timeline-content">
+                    <h4>Step 8: Early Risk Warning Trigger</h4>
+                    <p>If the risk level transitions to HIGH or stagnant water is detected, the frontend triggers warning alerts and glowing visual status pulses.</p>
+                  </div>
+                </div>
+
+              </div>
+            </section>
+
+            <!-- SECTION 9: RISK ANALYSIS -->
+            <section class="doc-card" id="doc-sec-9">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">09</span>
+                <h3><i class="fa-solid fa-calculator"></i> Risk Analysis Engine</h3>
+              </div>
+              <p>
+                The risk analysis engine computes a composite Mosquito Breeding Risk Index based on biological constraints of mosquito oviposition and larval development.
+              </p>
+
+              <div class="doc-highlight-box info">
+                <h4>Risk Calculation Model Breakdown (Max 100 Points):</h4>
+                <ul>
+                  <li><strong>Stagnant Water Factor (45 Points):</strong> Stagnant water is an essential baseline requirement for oviposition. If detected = +45 pts; if absent = 0 pts.</li>
+                  <li><strong>Temperature Factor (35 Points):</strong> Optimal larval development range (25.0°C - 32.0°C) = +35 pts; moderate growth range = +20 pts; suboptimal = +5 pts.</li>
+                  <li><strong>Relative Humidity Factor (20 Points):</strong> High moisture (≥ 65.0%) prolongs adult mosquito lifespan = +20 pts; moderate (45.0% - 65.0%) = +10 pts; low = +4 pts.</li>
+                </ul>
+              </div>
+
+              <!-- Mathematical Example Box -->
+              <div class="math-example-box">
+                <div class="math-title"><i class="fa-solid fa-vial"></i> Operational Calculation Example</div>
+                <div class="math-flow">
+                  <div class="math-node">Temperature: 28.0°C</div>
+                  <div class="math-operator">+</div>
+                  <div class="math-node">Humidity: 78.0%</div>
+                  <div class="math-operator">+</div>
+                  <div class="math-node">Water: DETECTED</div>
+                </div>
+                <div class="math-arrow"><i class="fa-solid fa-arrow-down"></i> Evaluated by Risk Algorithm</div>
+                <div class="math-result high">
+                  HIGH MOSQUITO BREEDING RISK (Score: 100%)
+                </div>
+              </div>
+
+              <p class="doc-disclaimer">
+                <strong>Important Notice:</strong> All risk score weights and decision thresholds (<code>thresh_mod</code>, <code>thresh_high</code>) are fully configurable via the backend settings API. Thresholds should be calibrated based on local experimental field data. This system estimates environmental suitability for mosquito breeding and does <em>not</em> claim to make medical predictions regarding disease transmission.
+              </p>
+            </section>
+
+            <!-- SECTION 10: BLOCK DIAGRAM -->
+            <section class="doc-card" id="doc-sec-10">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">10</span>
+                <h3><i class="fa-solid fa-cubes"></i> System Block Diagram</h3>
+              </div>
+              <p>Functional interconnections between sensing hardware, communication layers, and computing software:</p>
+
+              <div class="block-diagram-container">
+                <div class="block-column">
+                  <div class="block-box sensor-box">Temperature Sensor</div>
+                  <div class="block-box sensor-box">Humidity Sensor</div>
+                  <div class="block-box sensor-box">Stagnant Water Sensor</div>
+                  <div class="block-box sensor-box">DS3231 RTC Module</div>
+                </div>
+
+                <div class="block-connector"><i class="fa-solid fa-arrow-right"></i></div>
+
+                <div class="block-column">
+                  <div class="block-box core-box">ESP8266 / NodeMCU Microcontroller</div>
+                </div>
+
+                <div class="block-connector"><i class="fa-solid fa-arrow-right"></i></div>
+
+                <div class="block-column">
+                  <div class="block-box comm-box">Wi-Fi Module</div>
+                </div>
+
+                <div class="block-connector"><i class="fa-solid fa-arrow-right"></i></div>
+
+                <div class="block-column">
+                  <div class="block-box server-box">Flask Backend REST API</div>
+                  <div class="block-box server-box">SQLite Database</div>
+                </div>
+
+                <div class="block-connector"><i class="fa-solid fa-arrow-right"></i></div>
+
+                <div class="block-column">
+                  <div class="block-box output-box">Risk Engine</div>
+                  <div class="block-box output-box">Web Dashboard &amp; Warning Alert</div>
+                </div>
+              </div>
+            </section>
+
+            <!-- SECTION 11: DATA FLOW PIPELINE -->
+            <section class="doc-card" id="doc-sec-11">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">11</span>
+                <h3><i class="fa-solid fa-wave-square"></i> Data Flow Pipeline</h3>
+              </div>
+              <p>Data transition from physical phenomenon to user dashboard display:</p>
+              
+              <ol class="data-flow-list">
+                <li><strong>Physical Phenomenon:</strong> Air temperature, humidity, and water conduction create voltage/digital signals.</li>
+                <li><strong>Hardware Conversion:</strong> ESP8266 ADC converts water probe voltage; digital protocol decodes DHT readings.</li>
+                <li><strong>JSON Structuring:</strong> Telemetry is formatted into HTTP JSON headers: <code>{"temperature": float, "humidity": float, "water_detected": bool, "rssi": int, "battery_level": int}</code>.</li>
+                <li><strong>Network Transport:</strong> Payload travels across 802.11 b/g/n Wi-Fi to HTTP port 5000.</li>
+                <li><strong>API Processing:</strong> Flask parses JSON, validates data types, triggers <code>calculate_risk()</code> function, and executes SQLite <code>INSERT</code> query.</li>
+                <li><strong>UI Rendering:</strong> Frontend JavaScript fetches JSON via <code>/api/latest</code>, updates SVG dash-offsets, updates text labels with count-up animation, and updates Chart.js datasets.</li>
+              </ol>
+            </section>
+
+            <!-- SECTION 12: WEB DASHBOARD -->
+            <section class="doc-card" id="doc-sec-12">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">12</span>
+                <h3><i class="fa-solid fa-desktop"></i> Web Dashboard Components</h3>
+              </div>
+              <div class="doc-grid-2col">
+                <div class="doc-mini-card">
+                  <h4>Live Sensor Cards</h4>
+                  <p>Displays real-time numerical readings for Temperature (°C), Humidity (%), and Water detection state with live animation icons.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Animated Risk Meter</h4>
+                  <p>SVG circular gauge meter with dynamic glowing stroke colors representing risk score percentage.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Risk Status Badges</h4>
+                  <p>Color-coded status pills indicating LOW (Green), MODERATE (Amber), or HIGH (Red) risk tiers.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Warning Alert System</h4>
+                  <p>Prominent warning alert banner activated when stagnant water is detected or risk becomes HIGH.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Historical Sensor Logs</h4>
+                  <p>Interactive table displaying date, time, readings, and risk scores with date range filtering and CSV export.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Analytics Charts</h4>
+                  <p>Interactive line and doughnut charts powered by Chart.js showing temperature, humidity, and risk timelines.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>GIS Multi-Node Map</h4>
+                  <p>Interactive Leaflet.js satellite map showing all deployed sensor nodes with color-coded risk level markers.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Larval Incubation Timer</h4>
+                  <p>Entomological countdown showing estimated egg-to-adult mosquito hatching days based on current temperature.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Species Profile Switcher</h4>
+                  <p>Toggle between Aedes, Culex, and Anopheles mosquito species to recalibrate risk thresholds and incubation models.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Hardware Health Diagnostics</h4>
+                  <p>Live Wi-Fi RSSI signal strength, battery percentage, and active node ID from the ESP8266 hardware node.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Interactive Wiring Diagram</h4>
+                  <p>Pin-by-pin ESP8266 circuit wiring schematic modal for hardware assembly and demonstration reference.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>PDF Audit Report</h4>
+                  <p>One-click printable PDF surveillance report summarizing sensor data, risk trends, and action recommendations.</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- SECTION 13: API COMMUNICATION -->
+            <section class="doc-card" id="doc-sec-13">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">13</span>
+                <h3><i class="fa-solid fa-network-wired"></i> API Communication Specification</h3>
+              </div>
+              <p>Documentation for the microcontroller REST API endpoint used by the ESP8266:</p>
+
+              <div class="api-doc-box">
+                <div class="api-endpoint"><span class="method-post">POST</span> <code>/api/sensor</code></div>
+                
+                <h4 style="margin: 0.8rem 0 0.4rem 0; font-size: 0.88rem;">Request Payload (JSON):</h4>
+                <pre class="code-block"><code>{
+    "temperature": 28.5,
+    "humidity": 78.0,
+    "water_detected": true,
+    "node_id": "NODE-01",
+    "rssi": -65,
+    "battery_level": 88,
+    "species": "aedes"
+}</code></pre>
+
+                <h4 style="margin: 0.8rem 0 0.4rem 0; font-size: 0.88rem;">Response Payload (JSON):</h4>
+                <pre class="code-block"><code>{
+    "status": "success",
+    "message": "Sensor reading recorded successfully",
+    "data": {
+        "id": 142,
+        "node_id": "NODE-01",
+        "timestamp": "2026-10-08 19:00:00",
+        "temperature": 28.5,
+        "humidity": 78.0,
+        "water_detected": true,
+        "risk_level": "HIGH",
+        "risk_score": 100,
+        "risk_reason": "Stagnant water present | Temperature in optimal range | High humidity",
+        "incubation_days": 6.5,
+        "rssi": -65,
+        "battery_level": 88
+    }
+}</code></pre>
+
+                <h4 style="margin: 0.8rem 0 0.4rem 0; font-size: 0.88rem;">Field Definitions:</h4>
+                <ul class="field-def-list">
+                  <li><code>temperature</code> <em>(Float):</em> Ambient temperature reading in degrees Celsius (°C).</li>
+                  <li><code>humidity</code> <em>(Float):</em> Relative atmospheric humidity percentage (%).</li>
+                  <li><code>water_detected</code> <em>(Boolean):</em> Liquid presence status (<code>true</code> = stagnant water detected, <code>false</code> = dry).</li>
+                  <li><code>node_id</code> <em>(String, optional):</em> Sensor node identifier (default: NODE-01).</li>
+                  <li><code>rssi</code> <em>(Integer, optional):</em> Wi-Fi signal strength in dBm (e.g., -65).</li>
+                  <li><code>battery_level</code> <em>(Integer, optional):</em> Battery percentage (0-100).</li>
+                  <li><code>species</code> <em>(String, optional):</em> Target species profile: <code>aedes</code>, <code>culex</code>, or <code>anopheles</code>.</li>
+                  <li><code>risk_level</code> <em>(String):</em> Calculated risk classification (<code>LOW</code>, <code>MODERATE</code>, <code>HIGH</code>).</li>
+                  <li><code>risk_score</code> <em>(Integer):</em> Computed risk score ranging from 0 to 100.</li>
+                  <li><code>incubation_days</code> <em>(Float):</em> Estimated egg-to-adult mosquito hatching days at current temperature.</li>
+                </ul>
+              </div>
+            </section>
+
+            <!-- SECTION 14: DATABASE SCHEMA -->
+            <section class="doc-card" id="doc-sec-14">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">14</span>
+                <h3><i class="fa-solid fa-database"></i> Database Storage Schema</h3>
+              </div>
+              <p>Relational SQLite database structure (<code>mosquito_monitoring.db</code>):</p>
+              
+              <div class="table-wrapper">
+                <table class="custom-table">
+                  <thead>
+                    <tr>
+                      <th>Column Name</th>
+                      <th>Data Type</th>
+                      <th>Constraints</th>
+                      <th>Storage Purpose</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td><code>id</code></td><td>INTEGER</td><td>PRIMARY KEY AUTOINCREMENT</td><td>Unique sequential log record identifier</td></tr>
+                    <tr><td><code>node_id</code></td><td>TEXT</td><td>DEFAULT 'NODE-01'</td><td>Geographic sensor node identifier</td></tr>
+                    <tr><td><code>timestamp</code></td><td>TEXT</td><td>NOT NULL</td><td>Formatted date and time of sensor entry (YYYY-MM-DD HH:MM:SS)</td></tr>
+                    <tr><td><code>temperature</code></td><td>REAL</td><td>NOT NULL</td><td>Recorded air temperature value (°C)</td></tr>
+                    <tr><td><code>humidity</code></td><td>REAL</td><td>NOT NULL</td><td>Recorded relative humidity value (%)</td></tr>
+                    <tr><td><code>water_detected</code></td><td>INTEGER</td><td>NOT NULL</td><td>Boolean liquid flag (1 = Water Present, 0 = Clear)</td></tr>
+                    <tr><td><code>risk_level</code></td><td>TEXT</td><td>NOT NULL</td><td>Evaluated risk level string (LOW, MODERATE, HIGH)</td></tr>
+                    <tr><td><code>risk_score</code></td><td>INTEGER</td><td>NOT NULL</td><td>Computed vector risk index score (0-100)</td></tr>
+                    <tr><td><code>risk_reason</code></td><td>TEXT</td><td>NOT NULL</td><td>Text diagnostic summary of scoring factors</td></tr>
+                    <tr><td><code>rssi</code></td><td>INTEGER</td><td>DEFAULT -65</td><td>Wi-Fi signal strength in dBm</td></tr>
+                    <tr><td><code>battery_level</code></td><td>INTEGER</td><td>DEFAULT 88</td><td>Battery health percentage (0-100)</td></tr>
+                    <tr><td><code>species</code></td><td>TEXT</td><td>DEFAULT 'aedes'</td><td>Mosquito species profile used for risk calculation</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- SECTION 15: ADVANTAGES -->
+            <section class="doc-card" id="doc-sec-15">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">15</span>
+                <h3><i class="fa-solid fa-thumbs-up"></i> System Advantages</h3>
+              </div>
+              <ul class="doc-check-list">
+                <li><i class="fa-solid fa-check"></i> <strong>Continuous Surveillance:</strong> Eliminates manual physical inspection delays with 24/7 automated monitoring.</li>
+                <li><i class="fa-solid fa-check"></i> <strong>Real-Time Early Warning:</strong> Alerts property owners and health teams before adult mosquitoes emerge.</li>
+                <li><i class="fa-solid fa-check"></i> <strong>Remote Accessibility:</strong> Web-based dashboard accessible from any desktop or mobile browser.</li>
+                <li><i class="fa-solid fa-check"></i> <strong>Low-Cost Implementation:</strong> Built using affordable, standard off-the-shelf microcontrollers and sensors.</li>
+                <li><i class="fa-solid fa-check"></i> <strong>Historical Analytics:</strong> Provides time-series logging for trend analysis and seasonal vector planning.</li>
+                <li><i class="fa-solid fa-check"></i> <strong>Modular &amp; Scalable Architecture:</strong> Supports addition of multiple remote sensor nodes across wide geographic zones via GIS map.</li>
+                <li><i class="fa-solid fa-check"></i> <strong>Multi-Species Profiling:</strong> Risk calibration switchable between Aedes, Culex, and Anopheles species profiles.</li>
+                <li><i class="fa-solid fa-check"></i> <strong>Hardware Health Monitoring:</strong> Live Wi-Fi RSSI and battery diagnostics prevent silent node failures.</li>
+              </ul>
+            </section>
+
+            <!-- SECTION 16: APPLICATIONS -->
+            <section class="doc-card" id="doc-sec-16">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">16</span>
+                <h3><i class="fa-solid fa-city"></i> Practical Applications</h3>
+              </div>
+              <div class="doc-grid-2col">
+                <div class="doc-mini-card">
+                  <h4>Residential Communities</h4>
+                  <p>Monitoring backyard gardens, rainwater harvesters, air cooler basins, and drainage pipes.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Public Parks &amp; Spaces</h4>
+                  <p>Surveillance of artificial fountains, ponds, and public park drainage zones.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Construction Sites</h4>
+                  <p>Detecting stagnant water accumulation in excavated foundation pits and curing tanks.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Educational Campuses</h4>
+                  <p>Ensuring mosquito-free school yards, sports fields, and campus facilities.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Hospitals &amp; Healthcare</h4>
+                  <p>Protecting vulnerable patients by preventing vector breeding in medical campus surroundings.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Wastewater Treatment Sites</h4>
+                  <p>Monitoring open effluent channels, storm drains, and municipal treatment facilities.</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- SECTION 17: TECHNICAL LIMITATIONS -->
+            <section class="doc-card" id="doc-sec-17">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">17</span>
+                <h3><i class="fa-solid fa-shield-halved"></i> Technical Limitations</h3>
+              </div>
+              <div class="doc-highlight-box warning">
+                <strong>Technically Honest Assessment:</strong>
+                <ul>
+                  <li><strong>Sensor Precision Dependence:</strong> Accuracy depends directly on the calibration and quality of connected physical sensors.</li>
+                  <li><strong>Experimental Calibration Needed:</strong> Threshold values require environmental tuning based on specific local climate variations.</li>
+                  <li><strong>Surveillance vs Direct Bio-Detection:</strong> System estimates environmental suitability for mosquito breeding rather than directly detecting mosquito larvae or adult insects biologically.</li>
+                  <li><strong>Network Dependency:</strong> Web monitoring requires an active Wi-Fi and network connection for real-time dashboard transmission.</li>
+                </ul>
+              </div>
+            </section>
+
+            <!-- SECTION 18: FUTURE SCOPE -->
+            <section class="doc-card" id="doc-sec-18">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">18</span>
+                <h3><i class="fa-solid fa-rocket"></i> Future Scope &amp; Enhancement Roadmap</h3>
+              </div>
+              <div class="doc-grid-2col">
+                <div class="doc-mini-card">
+                  <h4>AI/ML Predictive Risk Models</h4>
+                  <p>Integrating machine learning weather forecasts to predict risk spikes days in advance.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Mobile Application</h4>
+                  <p>Developing native iOS/Android apps with push notifications for field health workers.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Solar-Powered Harvesting</h4>
+                  <p>Adding solar panels and lithium charge circuits for zero-maintenance off-grid nodes.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>GPS Multi-Node Mapping</h4>
+                  <p>Integrating GPS modules and interactive GIS map overlays for multi-node heatmaps.</p>
+                </div>
+                <div class="doc-mini-card">
+                  <h4>Automated Actuator Systems</h4>
+                  <p>Triggering automatic larvicide spray pumps or drainage valves upon high risk detection.</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- SECTION 19: EXPECTED OUTCOME -->
+            <section class="doc-card" id="doc-sec-19">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">19</span>
+                <h3><i class="fa-solid fa-flag-checkered"></i> Expected System Outcome</h3>
+              </div>
+              <p>
+                The completed system provides a reliable, automated IoT vector surveillance platform that transforms reactive mosquito control into a proactive early-warning operation. By continuously monitoring standing water, temperature, and humidity, the project drastically reduces vector-borne risk, cuts manual inspection costs, and empowers public health officials with real-time actionable data.
+              </p>
+            </section>
+
+            <!-- SECTION 20: PROJECT TEAM -->
+            <section class="doc-card" id="doc-sec-20">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">20</span>
+                <h3><i class="fa-solid fa-users"></i> Project Team &amp; Affiliation</h3>
+              </div>
+              <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 1rem;">Engineering Project Details (Editable Placeholders):</p>
+              
+              <div class="team-grid">
+                <div class="team-card">
+                  <div class="team-role">STUDENT DEVELOPER</div>
+                  <h4 class="team-name">[Student Name 1]</h4>
+                  <div class="team-meta">Reg. No: [123456789]</div>
+                  <div class="team-meta">Dept: Computer Science &amp; Engineering</div>
+                </div>
+
+                <div class="team-card">
+                  <div class="team-role">STUDENT DEVELOPER</div>
+                  <h4 class="team-name">[Student Name 2]</h4>
+                  <div class="team-meta">Reg. No: [123456790]</div>
+                  <div class="team-meta">Dept: Electrical &amp; Electronics Engineering</div>
+                </div>
+
+                <div class="team-card">
+                  <div class="team-role">PROJECT GUIDE / FACULTY</div>
+                  <h4 class="team-name">[Guide Name]</h4>
+                  <div class="team-meta">Designation: Assistant Professor</div>
+                  <div class="team-meta">Institution: [Department / College of Engineering]</div>
+                </div>
+              </div>
+            </section>
+
+            <!-- SECTION 21: REFERENCES -->
+            <section class="doc-card" id="doc-sec-21">
+              <div class="doc-card-header">
+                <span class="doc-sec-num">21</span>
+                <h3><i class="fa-solid fa-book-bookmark"></i> References &amp; Literature</h3>
+              </div>
+              <ol class="references-list">
+                <li>World Health Organization (WHO), <em>"Dengue and Severe Dengue Vector Control Guidelines,"</em> WHO Guidelines Publication, 2023.</li>
+                <li>Center for Disease Control and Prevention (CDC), <em>"Surveillance and Control of Aedes aegypti and Aedes albopictus,"</em> CDC Arbovirus Technical Report, 2022.</li>
+                <li>R. Smith et al., <em>"IoT-Based Micro-Climatic Monitoring for Mosquito Population Estimation,"</em> International Journal of Embedded Systems &amp; IoT, 2024.</li>
+                <li>ESP8266 Microcontroller Technical Datasheet and Wi-Fi Stack Documentation, Expressif Systems.</li>
+                <li>DHT11 / DHT22 Humidity and Temperature Digital Sensor Specification Standard, Aosong Electronics.</li>
+              </ol>
+            </section>
+
+          </article>
+
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- Config Modal Drawer -->
+  <div class="modal-overlay" id="configModal">
+    <div class="modal-card">
+      <div class="card-header">
+        <div class="card-title"><i class="fa-solid fa-sliders"></i> Configure Risk Threshold Parameters</div>
+        <button class="alert-close" id="btnCloseConfig"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <form id="configForm">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Optimal Temp Min (°C)</label>
+            <input type="number" step="0.5" id="cfgTempOptMin" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Optimal Temp Max (°C)</label>
+            <input type="number" step="0.5" id="cfgTempOptMax" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Optimal Humidity (%)</label>
+            <input type="number" step="1" id="cfgHumidityOpt" class="form-control" required>
+          </div>
+          <div class="form-group">
+            <label>Moderate Risk Score Threshold</label>
+            <input type="number" step="1" id="cfgThreshMod" class="form-control" required>
+          </div>
+          <div class="form-group" style="grid-column: span 2;">
+            <label>High Risk Score Threshold</label>
+            <input type="number" step="1" id="cfgThreshHigh" class="form-control" required>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 0.8rem; margin-top: 1rem;">
+          <button type="button" class="btn-secondary" onclick="document.getElementById('configModal').classList.remove('active')">Cancel</button>
+          <button type="submit" class="btn-primary"><i class="fa-solid fa-check"></i> Save Thresholds</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Wiring Diagram Modal -->
+  <div class="modal-overlay" id="wiringModal">
+    <div class="modal-card wiring-modal-card">
+      <div class="card-header">
+        <div class="card-title"><i class="fa-solid fa-plug-circle-bolt"></i> ESP8266 / NodeMCU Pin Wiring Diagram</div>
+        <button class="alert-close" onclick="document.getElementById('wiringModal').classList.remove('active')"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="wiring-diagram">
+        <div class="esp-board">
+          <div class="esp-title">ESP8266 / NodeMCU v3</div>
+          <div class="esp-pins">
+            <div class="wiring-row">
+              <div class="pin-badge d-pin">D4</div>
+              <div class="wire cyan"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-temperature-half"></i>
+                <div>
+                  <div class="comp-name">DHT11 / DHT22</div>
+                  <div class="comp-sub">Temperature &amp; Humidity Sensor → DATA pin</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge a-pin">A0</div>
+              <div class="wire blue"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-water"></i>
+                <div>
+                  <div class="comp-name">Water / Liquid Sensor</div>
+                  <div class="comp-sub">Stagnant Water Detection → AO (Analog Output)</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge d-pin">D1</div>
+              <div class="wire yellow"></div>
+              <div class="component-badge">
+                <i class="fa-regular fa-clock"></i>
+                <div>
+                  <div class="comp-name">DS3231 RTC Module</div>
+                  <div class="comp-sub">Real-Time Clock → SCL (I²C Clock)</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge d-pin">D2</div>
+              <div class="wire green"></div>
+              <div class="component-badge">
+                <i class="fa-regular fa-clock"></i>
+                <div>
+                  <div class="comp-name">DS3231 RTC Module</div>
+                  <div class="comp-sub">Real-Time Clock → SDA (I²C Data)</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge v-pin">3.3V</div>
+              <div class="wire red"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-bolt"></i>
+                <div>
+                  <div class="comp-name">All Sensors VCC</div>
+                  <div class="comp-sub">Power: 3.3V → VCC of DHT &amp; Water Sensor</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge g-pin">GND</div>
+              <div class="wire gray"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-minus"></i>
+                <div>
+                  <div class="comp-name">All Sensors Ground</div>
+                  <div class="comp-sub">Common Ground → GND of all modules</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge vin-pin">VIN</div>
+              <div class="wire orange"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-battery-full"></i>
+                <div>
+                  <div class="comp-name">9V Battery (via DC Connector)</div>
+                  <div class="comp-sub">External Power → VIN or Micro-USB port</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="wiring-note">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>Pull-up resistor (4.7kΩ) required on DHT DATA line. Water sensor DO pin optional — use AO for analog threshold detection.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
