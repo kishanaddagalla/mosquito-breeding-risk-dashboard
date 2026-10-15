@@ -5,6 +5,11 @@
 let currentRiskLevel = 'LOW';
 let previousScore = 0;
 let pollInterval = null;
+let lastReadingId = null;
+// Difference between the sensor node's DS3231 RTC and this browser's clock.
+// Once a reading with a device timestamp arrives, the dashboard clock is
+// rendered as the node's time (RTC-synced) instead of the local PC time.
+let deviceClockOffsetMs = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   initNavigation();
@@ -15,6 +20,8 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchLatestReading();
   fetchHistoryData();
   updateAnalyticsCharts();
+  initToastNotifications();
+  initWeatherForecast();
 
   // Poll for live sensor updates every 3.5 seconds
   pollInterval = setInterval(fetchLatestReading, 3500);
@@ -172,19 +179,27 @@ function handleDocScroll() {
   });
 }
 
-/* Date & Time Live Clock */
+/* Date & Time Live Clock (shows the sensor node's DS3231 RTC time once known) */
 function initClock() {
   const clockElem = document.getElementById('liveClock');
   const dateElem = document.getElementById('liveDate');
 
   function update() {
-    const now = new Date();
+    const now = new Date(Date.now() + (deviceClockOffsetMs || 0));
     if (clockElem) clockElem.textContent = now.toLocaleTimeString();
     if (dateElem) dateElem.textContent = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   }
 
   update();
   setInterval(update, 1000);
+}
+
+/* Parse a device timestamp string "YYYY-MM-DD HH:MM:SS" to epoch ms (or null). */
+function parseDeviceTimestamp(str) {
+  if (!str) return null;
+  const m = String(str).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
 }
 
 /* Fetch Latest Sensor Reading & Update Dashboard UI */
@@ -226,6 +241,22 @@ function showWaitingForSensorData() {
 function updateDashboardUI(reading, isHardwareConnected) {
   updateConnectionStatus(isHardwareConnected ? 'ONLINE' : 'WAITING');
 
+  // Show toast notification for new readings
+  if (lastReadingId !== null && reading.id !== lastReadingId) {
+    const level = reading.risk_level;
+    if (level === 'HIGH') {
+      showToast(`HIGH risk detected! Score: ${reading.risk_score}%`, 'danger');
+    } else if (level === 'MODERATE') {
+      showToast(`Moderate risk: ${reading.risk_score}%`, 'warning');
+    } else {
+      showToast(`New reading: ${reading.temperature}°C, ${reading.humidity}%`, 'info');
+    }
+    if (reading.water_detected) {
+      showToast('Stagnant water detected!', 'warning');
+    }
+  }
+  lastReadingId = reading.id;
+
   // 1. Temperature & Humidity Values (with smooth count up)
   const tempElem = document.getElementById('valTemp');
   const humElem = document.getElementById('valHumidity');
@@ -234,6 +265,20 @@ function updateDashboardUI(reading, isHardwareConnected) {
   if (tempElem) animateValue(tempElem, parseFloat(tempElem.textContent) || 0, reading.temperature, 800, '°C');
   if (humElem) animateValue(humElem, parseFloat(humElem.textContent) || 0, reading.humidity, 800, '%');
   if (lastUpdateElem) lastUpdateElem.textContent = reading.timestamp;
+
+  // Sync the dashboard clock to the node's DS3231 RTC time (authoritative)
+  const deviceMs = parseDeviceTimestamp(reading.timestamp);
+  if (deviceMs !== null) deviceClockOffsetMs = deviceMs - Date.now();
+
+  // Display water temperature from DS18B20
+  const waterTempElem = document.getElementById('valWaterTemp');
+  if (waterTempElem) {
+    if (reading.water_temperature !== undefined && reading.water_temperature !== null) {
+      animateValue(waterTempElem, parseFloat(waterTempElem.textContent) || 0, reading.water_temperature, 800, '°C');
+    } else {
+      waterTempElem.textContent = '--°C';
+    }
+  }
 
   // 2. Water Status Indicator & Ripple Animation
   const waterElem = document.getElementById('valWater');
@@ -254,6 +299,20 @@ function updateDashboardUI(reading, isHardwareConnected) {
   // 3. Risk Gauge Update
   updateRiskGauge(reading.risk_score, reading.risk_level, reading.risk_reason);
 
+  // 3b. Larval Incubation Estimate
+  const incubationDays = document.getElementById('incubationDays');
+  const incubationSpecies = document.getElementById('incubationSpecies');
+  if (incubationDays) {
+    if (reading.incubation_days !== undefined && reading.incubation_days !== null) {
+      incubationDays.textContent = `${reading.incubation_days} days`;
+    } else {
+      incubationDays.textContent = '-- days';
+    }
+  }
+  if (incubationSpecies && reading.species_profile) {
+    incubationSpecies.textContent = reading.species_profile;
+  }
+
   // 4. Warning Alert Banner Trigger
   const alertBanner = document.getElementById('alertBanner');
   const alertMsg = document.getElementById('alertMsg');
@@ -263,7 +322,7 @@ function updateDashboardUI(reading, isHardwareConnected) {
       alertBanner.classList.add('active');
       if (alertMsg) {
         if (reading.risk_level === 'HIGH') {
-          alertMsg.textContent = `CRITICAL ALERT: HIGH Mosquito Breeding Risk (${reading.risk_score}%) detected! Standing water & temperature optimal for larvae multiplication.`;
+          alertMsg.textContent = `CRITICAL ALERT: HIGH Mosquito Breeding Risk (${reading.risk_score}%) detected! Standing water & temperature optimal for larval development.`;
         } else {
           alertMsg.textContent = `WARNING: Stagnant Water Detected at sensor site. Environmental vector risk monitoring active.`;
         }
@@ -358,7 +417,7 @@ function updateConnectionStatus(state) {
       statusPill.style.background = 'rgba(16, 185, 129, 0.1)';
     }
     if (statusText) {
-      statusText.textContent = 'ESP8266 ONLINE';
+      statusText.textContent = 'NODE ONLINE';
       statusText.style.color = 'var(--risk-low)';
     }
   } else if (state === 'WAITING') {
@@ -389,6 +448,119 @@ function closeAlertBanner() {
     alertBanner.classList.remove('active');
     alertBanner.classList.add('manually-closed');
   }
+}
+
+/* === Toast Notification System === */
+function initToastNotifications() {
+  const container = document.createElement('div');
+  container.id = 'toastContainer';
+  container.style.cssText = 'position:fixed;top:1rem;right:1rem;z-index:9999;display:flex;flex-direction:column;gap:0.5rem;';
+  document.body.appendChild(container);
+}
+
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+
+  const colors = {
+    info: { bg: 'rgba(30,41,59,0.95)', border: '#3b82f6', icon: 'fa-circle-info' },
+    success: { bg: 'rgba(6,78,59,0.95)', border: '#10b981', icon: 'fa-check-circle' },
+    warning: { bg: 'rgba(120,53,15,0.95)', border: '#f59e0b', icon: 'fa-exclamation-triangle' },
+    danger: { bg: 'rgba(127,29,29,0.95)', border: '#ef4444', icon: 'fa-exclamation-circle' }
+  };
+  const c = colors[type] || colors.info;
+
+  const toast = document.createElement('div');
+  toast.style.cssText = `display:flex;align-items:center;gap:0.75rem;padding:0.85rem 1.25rem;border-radius:12px;background:${c.bg};border:1px solid ${c.border};color:#f8fafc;min-width:280px;max-width:400px;box-shadow:0 10px 40px rgba(0,0,0,0.3);animation:slideInRight 0.3s ease-out;`;
+  toast.innerHTML = `<i class="fa-solid ${c.icon}" style="font-size:1.1rem;color:${c.border};"></i><span style="font-size:0.85rem;font-weight:500;">${message}</span>`;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(10px)';
+    toast.style.transition = 'all 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 4000);
+}
+
+/* === Weather Forecast Integration === */
+async function initWeatherForecast() {
+  const weatherCard = document.getElementById('weatherForecast');
+  if (!weatherCard) return;
+
+  const weatherContent = weatherCard.querySelector('.weather-content');
+  if (!weatherContent) return;
+
+  weatherContent.innerHTML = '<div style="text-align:center;padding:1rem;"><i class="fa-solid fa-spinner fa-spin" style="color:var(--accent-cyan);font-size:1.5rem;"></i><p style="color:var(--text-muted);font-size:0.8rem;margin-top:0.5rem;">Loading weather data...</p></div>';
+
+  try {
+    // Use default coordinates (Bangalore area) - can be customized
+    const lat = 12.9716;
+    const lng = 77.5946;
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,precipitation,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3`);
+    const data = await response.json();
+
+    if (data.current) {
+      const temp = data.current.temperature_2m;
+      const humidity = data.current.relative_humidity_2m;
+      const weatherCode = data.current.weather_code;
+      const precipProb = data.daily?.precipitation_probability_max?.[0] ?? 0;
+
+      const weatherInfo = getWeatherDescription(weatherCode);
+      const breedingRisk = assessBreedingRisk(temp, humidity, precipProb);
+
+      weatherContent.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:2rem;font-weight:800;color:var(--text-primary);">${Math.round(temp)}°C</div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);">${weatherInfo}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:1.5rem;color:var(--accent-cyan);"><i class="fa-solid fa-droplet-percent"></i></div>
+            <div style="font-size:0.8rem;color:var(--text-secondary);">${Math.round(humidity)}%</div>
+          </div>
+        </div>
+        <div style="margin-top:1rem;padding:0.75rem;border-radius:10px;background:${breedingRisk.color};">
+          <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem;">
+            <i class="fa-solid fa-shield-virus" style="color:${breedingRisk.iconColor};"></i>
+            <span style="font-size:0.75rem;font-weight:700;color:${breedingRisk.iconColor};">${breedingRisk.level} BREEDING RISK</span>
+          </div>
+          <p style="font-size:0.75rem;color:var(--text-secondary);margin:0;">${breedingRisk.message}</p>
+        </div>
+      `;
+    }
+  } catch (error) {
+    console.warn('Weather fetch failed:', error);
+    weatherContent.innerHTML = '<div style="text-align:center;padding:1rem;color:var(--text-muted);font-size:0.8rem;"><i class="fa-solid fa-cloud-sun"></i><p style="margin-top:0.5rem;">Weather data unavailable</p></div>';
+  }
+}
+
+function getWeatherDescription(code) {
+  const descriptions = {
+    0: 'Clear sky', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast',
+    45: 'Fog', 48: 'Rime fog', 51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle',
+    61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 66: 'Freezing rain', 67: 'Heavy freezing rain',
+    71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains',
+    80: 'Light showers', 81: 'Showers', 82: 'Heavy showers',
+    85: 'Snow showers', 86: 'Heavy snow showers',
+    95: 'Thunderstorm', 96: 'Thunderstorm w/ hail', 99: 'Thunderstorm w/ heavy hail'
+  };
+  return descriptions[code] || 'Unknown';
+}
+
+function assessBreedingRisk(temp, humidity, precipProb) {
+  let score = 0;
+  if (temp >= 25 && temp <= 32) score += 40;
+  else if (temp >= 20 && temp <= 35) score += 20;
+  if (humidity >= 65) score += 30;
+  else if (humidity >= 50) score += 15;
+  if (precipProb >= 50) score += 30;
+  else if (precipProb >= 20) score += 15;
+
+  if (score >= 70) return { level: 'HIGH', color: 'rgba(239,68,68,0.12)', iconColor: '#ef4444', message: 'Favorable conditions for mosquito breeding. Monitor closely.' };
+  if (score >= 40) return { level: 'MODERATE', color: 'rgba(245,158,11,0.12)', iconColor: '#f59e0b', message: 'Moderate risk. Stay vigilant.' };
+  return { level: 'LOW', color: 'rgba(16,185,129,0.12)', iconColor: '#10b981', message: 'Low breeding risk. Conditions unfavorable.' };
 }
 
 /* Simulation Controls */

@@ -6,6 +6,7 @@ let tempChart = null;
 let humChart = null;
 let riskChart = null;
 let riskPieChart = null;
+let nodeCompareChart = null;
 
 function initCharts() {
   const chartOptionsBase = {
@@ -145,6 +146,34 @@ function initCharts() {
       }
     });
   }
+
+  // 5. Node Comparison Chart
+  const ctxNode = document.getElementById('nodeCompareChart');
+  if (ctxNode) {
+    nodeCompareChart = new Chart(ctxNode, {
+      type: 'bar',
+      data: {
+        labels: ['Temperature (°C)', 'Humidity (%)', 'Risk Score (%)'],
+        datasets: [{
+          label: 'NODE-01',
+          data: [0, 0, 0],
+          backgroundColor: 'rgba(6, 182, 212, 0.7)',
+          borderColor: '#06b6d4',
+          borderWidth: 2,
+          borderRadius: 6
+        }]
+      },
+      options: {
+        ...chartOptionsBase,
+        plugins: {
+          ...chartOptionsBase.plugins,
+          legend: {
+            labels: { color: '#78716c', font: { family: "'Outfit', sans-serif", size: 12 } }
+          }
+        }
+      }
+    });
+  }
 }
 
 async function updateAnalyticsCharts() {
@@ -190,6 +219,19 @@ async function updateAnalyticsCharts() {
         data.risk_counts.HIGH || 0
       ];
       riskPieChart.update();
+    }
+
+    // Update Node Comparison Chart
+    if (nodeCompareChart) {
+      const latest = await fetch('/api/latest?allow_empty=1').then(r => r.json()).catch(() => null);
+      if (latest && latest.status === 'success' && latest.data) {
+        nodeCompareChart.data.datasets[0].data = [
+          latest.data.temperature || 0,
+          latest.data.humidity || 0,
+          latest.data.risk_score || 0
+        ];
+        nodeCompareChart.update();
+      }
     }
 
   } catch (error) {

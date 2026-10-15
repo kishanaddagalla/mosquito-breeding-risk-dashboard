@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mosquito Breeding Risk Detection System | IoT Dashboard</title>
-  <meta name="description" content="IoT Monitoring Dashboard and Mosquito Breeding Risk Detection System powered by ESP8266, SQLite, and Flask.">
+  <meta name="description" content="IoT Monitoring Dashboard and Mosquito Breeding Risk Detection System powered by Arduino and ESP8266, SQLite, and Flask.">
   
   <!-- Fonts & Icons -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -63,7 +63,7 @@
         </button>
         <div class="nav-status" id="connectionPill">
           <div class="pulse-dot"></div>
-          <span id="connectionText">ESP8266 ONLINE</span>
+          <span id="connectionText">NODE ONLINE</span>
         </div>
       </div>
     </header>
@@ -93,7 +93,7 @@
               <div class="live-telemetry-badge">
                 <div class="live-signal-icon"><i class="fa-solid fa-wifi"></i></div>
                 <div>
-                  <div style="font-weight: 700; font-size: 0.88rem; color: #ffffff;">LIVE HARDWARE FEED (ESP8266 / NodeMCU)</div>
+                  <div style="font-weight: 700; font-size: 0.88rem; color: #ffffff;">LIVE HARDWARE FEED (ARDUINO + ESP8266)</div>
                   <div style="font-size: 0.78rem; color: var(--text-secondary);">Direct sensor telemetry from <code>/api/sensor</code> endpoint</div>
                 </div>
               </div>
@@ -217,7 +217,19 @@
                 <div class="metric-sub">Survival threshold: ≥ 65%</div>
               </div>
 
-              <!-- Metric 3: Stagnant Water Status -->
+              <!-- Metric 3: Water Temperature (DS18B20) -->
+              <div class="metric-card">
+                <div class="metric-header">
+                  <span>WATER TEMP</span>
+                  <div class="metric-icon" style="background: rgba(139,92,246,0.15); color: #c084fc;"><i class="fa-solid fa-temperature-half"></i></div>
+                </div>
+                <div class="metric-value-container">
+                  <div class="metric-value" id="valWaterTemp">--°C</div>
+                </div>
+                <div class="metric-sub">DS18B20 probe | Larval growth: 25-35°C</div>
+              </div>
+
+              <!-- Metric 4: Stagnant Water Status -->
               <div class="metric-card">
                 <div class="metric-header">
                   <span>STAGNANT WATER</span>
@@ -232,10 +244,10 @@
                 <div class="metric-sub">Essential for Aedes oviposition</div>
               </div>
 
-              <!-- Metric 4: Timestamp Info -->
+              <!-- Metric 5: Device RTC Timestamp (DS3231) -->
               <div class="metric-card">
                 <div class="metric-header">
-                  <span>SYSTEM TIME</span>
+                  <span>DEVICE TIME (RTC)</span>
                   <div class="metric-icon icon-time"><i class="fa-regular fa-clock"></i></div>
                 </div>
                 <div class="metric-value-container">
@@ -243,10 +255,22 @@
                 </div>
                 <div class="metric-sub" id="liveDate">Oct 8, 2026</div>
                 <div style="font-size: 0.72rem; color: var(--accent-cyan); margin-top: 0.4rem;">
-                  Last Sync: <span id="lastUpdate">Waiting for sensor data</span>
+                  RTC Sync: <span id="lastUpdate">Waiting for sensor data</span>
                 </div>
               </div>
 
+            </div>
+
+            <!-- Weather Forecast Card -->
+            <div class="card" id="weatherForecast" style="margin-top:1.8rem;">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fa-solid fa-cloud-sun" style="color:#f59e0b;"></i> Weather Forecast & Breeding Outlook
+                </div>
+              </div>
+              <div class="weather-content" style="padding:0.5rem 0;">
+                <div style="text-align:center;padding:1rem;"><i class="fa-solid fa-spinner fa-spin" style="color:var(--accent-cyan);font-size:1.5rem;"></i><p style="color:var(--text-muted);font-size:0.8rem;margin-top:0.5rem;">Loading weather data...</p></div>
+              </div>
             </div>
 
             <!-- Animated Environmental Relationship Flowchart -->
@@ -268,7 +292,7 @@
 
                 <div class="flow-step">
                   <div class="flow-node"><i class="fa-solid fa-microchip"></i></div>
-                  <div class="flow-title">NodeMCU Node</div>
+                  <div class="flow-title">Arduino Node</div>
                   <div class="flow-desc">Water + Temp + Hum</div>
                 </div>
 
@@ -422,6 +446,15 @@
             </div>
           </div>
 
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title"><i class="fa-solid fa-chart-bar" style="color:#8b5cf6;"></i> Node Comparison</div>
+            </div>
+            <div class="chart-container">
+              <canvas id="nodeCompareChart"></canvas>
+            </div>
+          </div>
+
         </div>
       </section>
 
@@ -466,7 +499,7 @@
           <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-tower-broadcast"></i> Device health</div><span class="card-caption">Latest node telemetry</span></div><div class="ops-list" id="deviceList"><div class="empty-state">Loading devices…</div></div></article>
           <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-person-circle-check"></i> Create site inspection</div></div><form id="inspectionForm" class="ops-form" data-role="Administrator,Field worker"><div class="form-grid"><label>Site name<input name="site_name" required placeholder="e.g. Drainage Basin"></label><label>Node<select name="node_id"><option>NODE-01</option></select></label></div><label>Observation notes<textarea name="notes" rows="3" placeholder="Describe water source or corrective action"></textarea></label><label>Photo evidence <input name="photo" type="file" accept="image/png,image/jpeg,image/webp"></label><button class="btn-primary" type="submit"><i class="fa-solid fa-plus"></i> Create inspection</button></form></article>
           <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-list-check"></i> Inspection queue</div></div><div class="ops-list" id="inspectionList"><div class="empty-state">No inspections loaded.</div></div></article>
-          <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-sliders"></i> Sensor calibration</div></div><form id="calibrationForm" class="ops-form" data-role="Administrator"><div class="form-grid"><label>Node<select name="node_id"><option>NODE-01</option></select></label><label>Sensor<select name="sensor_name"><option>DHT22 temperature</option><option>DHT22 humidity</option><option>Water sensor</option></select></label><label>Offset<input name="offset_value" type="number" step="0.1" value="0"></label><label>Next due<input name="next_due" type="date" required></label></div><label>Notes<textarea name="notes" rows="2" placeholder="Reference instrument / procedure"></textarea></label><button class="btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save calibration</button></form></article>
+          <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-sliders"></i> Sensor calibration</div></div><form id="calibrationForm" class="ops-form" data-role="Administrator"><div class="form-grid"><label>Node<select name="node_id"><option>NODE-01</option></select></label><label>Sensor<select name="sensor_name"><option>DHT22 temperature</option><option>DHT22 humidity</option><option>DS18B20 water temperature</option><option>Water sensor</option></select></label><label>Offset<input name="offset_value" type="number" step="0.1" value="0"></label><label>Next due<input name="next_due" type="date" required></label></div><label>Notes<textarea name="notes" rows="2" placeholder="Reference instrument / procedure"></textarea></label><button class="btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Save calibration</button></form></article>
           <article class="card ops-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-calendar-check"></i> Calibration register</div></div><div class="ops-list" id="calibrationList"><div class="empty-state">No calibration records.</div></div></article>
         </div>
       </section>
@@ -543,7 +576,7 @@
                 The <strong>Mosquito Breeding Risk Detection System</strong> is an end-to-end Internet of Things (IoT) monitoring framework engineered to assess micro-climatic environmental conditions associated with vector mosquito reproduction. Mosquitoes, particularly species such as <em>Aedes aegypti</em> and <em>Culex</em>, require standing stagnant water, elevated relative humidity, and specific ambient thermal ranges to lay eggs (oviposition) and undergo larval incubation.
               </p>
               <p>
-                By deploying remote sensor nodes equipped with an ESP8266 / NodeMCU microcontroller, liquid detection probes, thermal sensors, and hygrometers, this system continuously evaluates the environment and calculates a dynamic <strong>Mosquito Breeding Risk Index (0-100%)</strong>. The resulting data is ingested by a Python Flask backend, stored in SQLite, and rendered on a real-time web dashboard to serve as an automated early vector risk indicator for public health officers and property managers.
+                By deploying remote sensor nodes equipped with an Arduino microcontroller that acquires readings from liquid detection probes, DHT22 thermal/hygrometric sensors, a DS18B20 water temperature probe, and a DS3231 real-time clock, linked to an ESP8266 Wi-Fi gateway for transmission, this system continuously evaluates the environment and calculates a dynamic <strong>Mosquito Breeding Risk Index (0-100%)</strong>. The resulting data is ingested by a Python Flask backend, stored in SQLite, and rendered on a real-time web dashboard to serve as an automated early vector risk indicator for public health officers and property managers.
               </p>
             </section>
 
@@ -613,7 +646,10 @@
                 <h3><i class="fa-solid fa-lightbulb"></i> Proposed Solution</h3>
               </div>
               <p>
-                The proposed solution is an automated, low-power IoT environmental surveillance system. The ESP8266 / NodeMCU microcontroller acts as a remote telemetry node. It samples data from connected temperature, humidity, water, and real-time clock sensors, formats the readings into a structured JSON payload, and transmits the telemetry over Wi-Fi to a Flask REST API server.
+                The proposed solution is an automated, low-power IoT environmental surveillance system. An Arduino microcontroller acts as the field sensor node: it samples the connected temperature, humidity, water-presence, aquatic-thermal, and real-time clock sensors, then streams the values over a serial link to an ESP8266 gateway.
+              </p>
+              <p>
+                The ESP8266 gateway handles all wireless connectivity. It receives each reading from the Arduino, formats the values into a structured JSON payload, and transmits the telemetry over Wi-Fi to the Flask REST API server. This cleanly separates sensor acquisition (Arduino) from network transport (ESP8266).
               </p>
               <p>
                 The backend server executes a weighted risk analysis algorithm, persists the entry into an SQLite relational database, and exposes REST endpoints for the web dashboard. The web dashboard dynamically refreshes cards, risk status indicators, and warning banners to deliver early vector risk notifications.
@@ -631,7 +667,9 @@
               <div class="arch-flow-diagram">
                 <div class="arch-node"><i class="fa-solid fa-microchip"></i><span>Sensors</span></div>
                 <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
-                <div class="arch-node"><i class="fa-solid fa-wifi"></i><span>ESP8266 NodeMCU</span></div>
+                <div class="arch-node"><i class="fa-solid fa-microchip"></i><span>Arduino Sensor Node</span></div>
+                <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                <div class="arch-node"><i class="fa-solid fa-wifi"></i><span>ESP8266 Wi-Fi Gateway</span></div>
                 <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
                 <div class="arch-node"><i class="fa-solid fa-cloud-arrow-up"></i><span>Wi-Fi Network</span></div>
                 <div class="arch-arrow"><i class="fa-solid fa-arrow-right"></i></div>
@@ -659,23 +697,37 @@
                 
                 <div class="hw-card">
                   <div class="hw-icon"><i class="fa-solid fa-microchip"></i></div>
+                  <h4>Arduino Uno / Nano</h4>
+                  <div class="hw-field"><strong>Purpose:</strong> Field Sensor Controller</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Reads every sensor (digital, analog, 1-Wire and I²C) and streams the values over a serial link to the ESP8266 Wi-Fi gateway. It performs no wireless communication itself.</div>
+                </div>
+
+                <div class="hw-card">
+                  <div class="hw-icon"><i class="fa-solid fa-wifi"></i></div>
                   <h4>ESP8266 / NodeMCU</h4>
-                  <div class="hw-field"><strong>Purpose:</strong> Main System Microcontroller &amp; Wi-Fi SoC</div>
-                  <div class="hw-field"><strong>Role in Project:</strong> Reads digital/analog sensor signals, processes telemetry, and transmits JSON payloads over HTTP POST.</div>
+                  <div class="hw-field"><strong>Purpose:</strong> Wi-Fi Gateway &amp; Telemetry Transport</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Receives each reading from the Arduino over serial, formats it into a JSON payload, and transmits it to the dashboard with an HTTP POST. It carries no sensors of its own.</div>
                 </div>
 
                 <div class="hw-card">
                   <div class="hw-icon"><i class="fa-solid fa-temperature-high"></i></div>
-                  <h4>Temperature Sensor (DHT11/DHT22)</h4>
+                  <h4>Air Temperature Sensor (DHT22)</h4>
                   <div class="hw-field"><strong>Purpose:</strong> Ambient Thermal Measurement</div>
                   <div class="hw-field"><strong>Role in Project:</strong> Measures ambient air temperature in °C to determine larval incubation velocity.</div>
                 </div>
 
                 <div class="hw-card">
                   <div class="hw-icon"><i class="fa-solid fa-droplet-percent"></i></div>
-                  <h4>Humidity Sensor (DHT11/DHT22)</h4>
+                  <h4>Humidity Sensor (DHT22)</h4>
                   <div class="hw-field"><strong>Purpose:</strong> Relative Humidity Measurement</div>
                   <div class="hw-field"><strong>Role in Project:</strong> Measures relative air moisture (%) to evaluate adult vector lifespan and host-seeking activity.</div>
+                </div>
+
+                <div class="hw-card">
+                  <div class="hw-icon"><i class="fa-solid fa-temperature-half"></i></div>
+                  <h4>Water Temperature Probe (DS18B20)</h4>
+                  <div class="hw-field"><strong>Purpose:</strong> Waterproof Aquatic Thermal Measurement</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Stainless-steel 1-Wire probe immersed in standing water to measure water temperature (°C), the dominant driver of larval development and hatching rate.</div>
                 </div>
 
                 <div class="hw-card">
@@ -696,21 +748,21 @@
                   <div class="hw-icon"><i class="fa-solid fa-battery-full"></i></div>
                   <h4>9V Battery</h4>
                   <div class="hw-field"><strong>Purpose:</strong> Portable Power Source</div>
-                  <div class="hw-field"><strong>Role in Project:</strong> Supplies direct DC power to the NodeMCU board for standalone field deployment.</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Supplies DC power to the Arduino sensor node and the ESP8266 gateway for standalone field deployment.</div>
                 </div>
 
                 <div class="hw-card">
                   <div class="hw-icon"><i class="fa-solid fa-plug"></i></div>
                   <h4>9V Snap Connector with DC Plug</h4>
                   <div class="hw-field"><strong>Purpose:</strong> Power Delivery Interface</div>
-                  <div class="hw-field"><strong>Role in Project:</strong> Connects the 9V battery securely to the VIN / DC barrel jack of the NodeMCU microcontroller.</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Connects the 9V battery securely to the VIN / DC barrel jack of the Arduino and ESP8266 boards.</div>
                 </div>
 
                 <div class="hw-card">
                   <div class="hw-icon"><i class="fa-solid fa-diagram-nested"></i></div>
                   <h4>Connecting Wires &amp; Breadboard</h4>
                   <div class="hw-field"><strong>Purpose:</strong> Circuit Interconnection</div>
-                  <div class="hw-field"><strong>Role in Project:</strong> Routes power, ground, and I/O data lines between sensors, RTC module, and ESP8266 pins.</div>
+                  <div class="hw-field"><strong>Role in Project:</strong> Routes power, ground, and I/O data lines between the sensors and the Arduino, plus the serial link between the Arduino and the ESP8266 gateway.</div>
                 </div>
 
               </div>
@@ -732,11 +784,15 @@
               <div class="sw-grid">
                 <div class="sw-card">
                   <h4><i class="fa-solid fa-laptop-code"></i> Arduino IDE</h4>
-                  <p>Development environment used to compile and flash C++ firmware sketches to the ESP8266 board.</p>
+                  <p>Development environment used to compile and flash the two C++ firmware sketches: the Arduino sensor node and the ESP8266 Wi-Fi gateway.</p>
                 </div>
                 <div class="sw-card">
-                  <h4><i class="fa-solid fa-terminal"></i> ESP8266 C++ Firmware</h4>
-                  <p>Embedded C++ application managing sensor I/O sampling, HTTP client request headers, and JSON formatting.</p>
+                  <h4><i class="fa-solid fa-terminal"></i> Arduino Sensor Firmware</h4>
+                  <p>Embedded C++ application that samples the DHT22, DS18B20 (OneWire/DallasTemperature), water probe and DS3231 RTC, then streams each reading over a serial link.</p>
+                </div>
+                <div class="sw-card">
+                  <h4><i class="fa-solid fa-tower-broadcast"></i> ESP8266 Gateway Firmware</h4>
+                  <p>Embedded C++ application that parses the incoming Arduino serial line, formats the JSON payload, and performs the HTTP POST to the REST API.</p>
                 </div>
                 <div class="sw-card">
                   <h4><i class="fa-brands fa-python"></i> Python Flask Backend</h4>
@@ -788,31 +844,31 @@
                   <div class="timeline-marker">1</div>
                   <div class="timeline-content">
                     <h4>Step 1: Environmental Sampling</h4>
-                    <p>Physical sensors (DHT11/DHT22 and liquid water sensor) continuously gather thermal, hygrometric, and water presence state data from the monitored environment.</p>
+                    <p>Physical sensors (DHT22 air temperature/humidity, DS18B20 water temperature probe, and liquid water sensor) continuously gather thermal, hygrometric, aquatic thermal, and water presence state data from the monitored environment.</p>
                   </div>
                 </div>
 
                 <div class="timeline-item">
                   <div class="timeline-marker">2</div>
                   <div class="timeline-content">
-                    <h4>Step 2: ESP8266 Sensor Input Reading</h4>
-                    <p>The ESP8266 microcontroller reads analog voltage from the water probe pin and digital pulse streams from the DHT sensor and DS3231 RTC clock module.</p>
+                    <h4>Step 2: Arduino Sensor Input Reading</h4>
+                    <p>The Arduino microcontroller reads analog voltage from the water probe pin, digital pulse streams from the DHT22 sensor, the 1-Wire temperature stream from the DS18B20 water probe, and time data from the DS3231 RTC clock module.</p>
                   </div>
                 </div>
 
                 <div class="timeline-item">
                   <div class="timeline-marker">3</div>
                   <div class="timeline-content">
-                    <h4>Step 3: Microcontroller Data Processing</h4>
-                    <p>Firmware validates data boundaries, converts raw analog values to boolean water presence status, and packages data into a formatted JSON string payload.</p>
+                    <h4>Step 3: Arduino Data Processing &amp; Serial Handoff</h4>
+                    <p>The Arduino firmware validates data boundaries, converts raw analog values to boolean water presence status, reads the DS18B20 water temperature, and emits one compact serial line (e.g. <code>T=29.1,H=70.0,W=1,WT=28.0,RT=...</code>) to the ESP8266 gateway.</p>
                   </div>
                 </div>
 
                 <div class="timeline-item">
                   <div class="timeline-marker">4</div>
                   <div class="timeline-content">
-                    <h4>Step 4: Wi-Fi Transmission</h4>
-                    <p>The ESP8266 establishes a Wi-Fi connection and issues an HTTP POST request carrying JSON payload data to the server endpoint (<code>/api/sensor</code>).</p>
+                    <h4>Step 4: ESP8266 Wi-Fi Transmission</h4>
+                    <p>The ESP8266 gateway parses the serial line from the Arduino, formats it into a JSON payload, establishes a Wi-Fi connection, and issues an HTTP POST request to the server endpoint (<code>/api/sensor</code>).</p>
                   </div>
                 </div>
 
@@ -820,7 +876,7 @@
                   <div class="timeline-marker">5</div>
                   <div class="timeline-content">
                     <h4>Step 5: Backend Ingestion &amp; SQLite Storage</h4>
-                    <p>The Python Flask server parses the request, timestamps the entry, and inserts the raw readings into the SQLite <code>sensor_readings</code> table.</p>
+                    <p>The Python Flask server parses the request, applies the DS3231 RTC device timestamp (falling back to server time if absent), and inserts the raw readings into the SQLite <code>sensor_readings</code> table.</p>
                   </div>
                 </div>
 
@@ -910,13 +966,13 @@
                 <div class="block-connector"><i class="fa-solid fa-arrow-right"></i></div>
 
                 <div class="block-column">
-                  <div class="block-box core-box">ESP8266 / NodeMCU Microcontroller</div>
+                  <div class="block-box core-box">Arduino Sensor Controller</div>
                 </div>
 
                 <div class="block-connector"><i class="fa-solid fa-arrow-right"></i></div>
 
                 <div class="block-column">
-                  <div class="block-box comm-box">Wi-Fi Module</div>
+                  <div class="block-box comm-box">ESP8266 Wi-Fi Gateway</div>
                 </div>
 
                 <div class="block-connector"><i class="fa-solid fa-arrow-right"></i></div>
@@ -944,9 +1000,10 @@
               <p>Data transition from physical phenomenon to user dashboard display:</p>
               
               <ol class="data-flow-list">
-                <li><strong>Physical Phenomenon:</strong> Air temperature, humidity, and water conduction create voltage/digital signals.</li>
-                <li><strong>Hardware Conversion:</strong> ESP8266 ADC converts water probe voltage; digital protocol decodes DHT readings.</li>
-                <li><strong>JSON Structuring:</strong> Telemetry is formatted into HTTP JSON headers: <code>{"temperature": float, "humidity": float, "water_detected": bool, "rssi": int, "battery_level": int}</code>.</li>
+                <li><strong>Physical Phenomenon:</strong> Air temperature, humidity, water conduction, and water thermal state create voltage/digital signals.</li>
+                <li><strong>Hardware Conversion (Arduino):</strong> The Arduino ADC converts the water probe voltage; the DHT protocol decodes temperature/humidity; the 1-Wire bus reads the DS18B20 water probe; the I²C bus reads the DS3231 RTC.</li>
+                <li><strong>Serial Handoff:</strong> The Arduino streams each reading as a compact key=value line (e.g. <code>T=29.1,H=70.0,W=1,WT=28.0,RT=...</code>) to the ESP8266 gateway over a UART link.</li>
+                <li><strong>JSON Structuring (ESP8266):</strong> The gateway formats the values into an HTTP JSON payload: <code>{"temperature": float, "humidity": float, "water_detected": bool, "water_temperature": float, "rssi": int, "battery_level": int}</code>.</li>
                 <li><strong>Network Transport:</strong> Payload travels across 802.11 b/g/n Wi-Fi to HTTP port 5000.</li>
                 <li><strong>API Processing:</strong> Flask parses JSON, validates data types, triggers <code>calculate_risk()</code> function, and executes SQLite <code>INSERT</code> query.</li>
                 <li><strong>UI Rendering:</strong> Frontend JavaScript fetches JSON via <code>/api/latest</code>, updates SVG dash-offsets, updates text labels with count-up animation, and updates Chart.js datasets.</li>
@@ -998,11 +1055,11 @@
                 </div>
                 <div class="doc-mini-card">
                   <h4>Hardware Health Diagnostics</h4>
-                  <p>Live Wi-Fi RSSI signal strength, battery percentage, and active node ID from the ESP8266 hardware node.</p>
+                  <p>Live Wi-Fi RSSI signal strength, battery percentage, and active node ID from the hardware node.</p>
                 </div>
                 <div class="doc-mini-card">
                   <h4>Interactive Wiring Diagram</h4>
-                  <p>Pin-by-pin ESP8266 circuit wiring schematic modal for hardware assembly and demonstration reference.</p>
+                  <p>Pin-by-pin Arduino + ESP8266 circuit wiring schematic modal for hardware assembly and demonstration reference.</p>
                 </div>
                 <div class="doc-mini-card">
                   <h4>PDF Audit Report</h4>
@@ -1017,7 +1074,7 @@
                 <span class="doc-sec-num">13</span>
                 <h3><i class="fa-solid fa-network-wired"></i> API Communication Specification</h3>
               </div>
-              <p>Documentation for the microcontroller REST API endpoint used by the ESP8266:</p>
+              <p>Documentation for the microcontroller REST API endpoint used by the ESP8266 Wi-Fi gateway:</p>
 
               <div class="api-doc-box">
                 <div class="api-endpoint"><span class="method-post">POST</span> <code>/api/sensor</code></div>
@@ -1027,6 +1084,8 @@
     "temperature": 28.5,
     "humidity": 78.0,
     "water_detected": true,
+    "water_temperature": 27.5,
+    "timestamp": "2026-10-15 19:30:00",
     "node_id": "NODE-01",
     "rssi": -65,
     "battery_level": 88,
@@ -1044,9 +1103,10 @@
         "temperature": 28.5,
         "humidity": 78.0,
         "water_detected": true,
+        "water_temperature": 27.5,
         "risk_level": "HIGH",
         "risk_score": 100,
-        "risk_reason": "Stagnant water present | Temperature in optimal range | High humidity",
+        "risk_reason": "Stagnant water present | Water temperature (27.5°C) is optimal for larval development | Air temperature in optimal range | High humidity",
         "incubation_days": 6.5,
         "rssi": -65,
         "battery_level": 88
@@ -1058,6 +1118,8 @@
                   <li><code>temperature</code> <em>(Float):</em> Ambient temperature reading in degrees Celsius (°C).</li>
                   <li><code>humidity</code> <em>(Float):</em> Relative atmospheric humidity percentage (%).</li>
                   <li><code>water_detected</code> <em>(Boolean):</em> Liquid presence status (<code>true</code> = stagnant water detected, <code>false</code> = dry).</li>
+                  <li><code>water_temperature</code> <em>(Float, optional):</em> DS18B20 water temperature reading in °C (0–50 valid range); drives larval development scoring when present.</li>
+                  <li><code>timestamp</code> <em>(String, optional):</em> DS3231 RTC device time (<code>YYYY-MM-DD HH:MM:SS</code>). When supplied it is stored as the authoritative measurement time (keeps offline/batched uploads accurate); if omitted the server clock is used.</li>
                   <li><code>node_id</code> <em>(String, optional):</em> Sensor node identifier (default: NODE-01).</li>
                   <li><code>rssi</code> <em>(Integer, optional):</em> Wi-Fi signal strength in dBm (e.g., -65).</li>
                   <li><code>battery_level</code> <em>(Integer, optional):</em> Battery percentage (0-100).</li>
@@ -1094,6 +1156,7 @@
                     <tr><td><code>temperature</code></td><td>REAL</td><td>NOT NULL</td><td>Recorded air temperature value (°C)</td></tr>
                     <tr><td><code>humidity</code></td><td>REAL</td><td>NOT NULL</td><td>Recorded relative humidity value (%)</td></tr>
                     <tr><td><code>water_detected</code></td><td>INTEGER</td><td>NOT NULL</td><td>Boolean liquid flag (1 = Water Present, 0 = Clear)</td></tr>
+                    <tr><td><code>water_temperature</code></td><td>REAL</td><td>NULLABLE</td><td>DS18B20 water temperature value (°C); drives larval development scoring</td></tr>
                     <tr><td><code>risk_level</code></td><td>TEXT</td><td>NOT NULL</td><td>Evaluated risk level string (LOW, MODERATE, HIGH)</td></tr>
                     <tr><td><code>risk_score</code></td><td>INTEGER</td><td>NOT NULL</td><td>Computed vector risk index score (0-100)</td></tr>
                     <tr><td><code>risk_reason</code></td><td>TEXT</td><td>NOT NULL</td><td>Text diagnostic summary of scoring factors</td></tr>
@@ -1257,7 +1320,8 @@
                 <li>World Health Organization (WHO), <em>"Dengue and Severe Dengue Vector Control Guidelines,"</em> WHO Guidelines Publication, 2023.</li>
                 <li>Center for Disease Control and Prevention (CDC), <em>"Surveillance and Control of Aedes aegypti and Aedes albopictus,"</em> CDC Arbovirus Technical Report, 2022.</li>
                 <li>R. Smith et al., <em>"IoT-Based Micro-Climatic Monitoring for Mosquito Population Estimation,"</em> International Journal of Embedded Systems &amp; IoT, 2024.</li>
-                <li>ESP8266 Microcontroller Technical Datasheet and Wi-Fi Stack Documentation, Expressif Systems.</li>
+                <li>Arduino Uno Technical Reference and Language Specification, Arduino.cc.</li>
+                <li>ESP8266 Microcontroller Technical Datasheet and Wi-Fi Stack Documentation, Espressif Systems.</li>
                 <li>DHT11 / DHT22 Humidity and Temperature Digital Sensor Specification Standard, Aosong Electronics.</li>
               </ol>
             </section>
@@ -1315,22 +1379,33 @@
   <div class="modal-overlay" id="wiringModal">
     <div class="modal-card wiring-modal-card">
       <div class="card-header">
-        <div class="card-title"><i class="fa-solid fa-plug-circle-bolt"></i> ESP8266 / NodeMCU Pin Wiring Diagram</div>
+        <div class="card-title"><i class="fa-solid fa-plug-circle-bolt"></i> Arduino + ESP8266 Pin Wiring Diagram</div>
         <button class="alert-close" onclick="document.getElementById('wiringModal').classList.remove('active')"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
       <div class="wiring-diagram">
-        <div class="esp-board">
-          <div class="esp-title">ESP8266 / NodeMCU v3</div>
+        <div class="esp-board" style="margin-bottom: 1rem;">
+          <div class="esp-title">Arduino Uno / Nano — Sensor Node</div>
           <div class="esp-pins">
             <div class="wiring-row">
-              <div class="pin-badge d-pin">D4</div>
+              <div class="pin-badge d-pin">D2</div>
               <div class="wire cyan"></div>
               <div class="component-badge">
                 <i class="fa-solid fa-temperature-half"></i>
                 <div>
-                  <div class="comp-name">DHT11 / DHT22</div>
-                  <div class="comp-sub">Temperature &amp; Humidity Sensor → DATA pin</div>
+                  <div class="comp-name">DHT22</div>
+                  <div class="comp-sub">Air Temperature &amp; Humidity Sensor → DATA pin</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge d-pin">D3</div>
+              <div class="wire purple"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-temperature-low"></i>
+                <div>
+                  <div class="comp-name">DS18B20 Water Probe</div>
+                  <div class="comp-sub">Waterproof Water Temperature → DQ (1-Wire Data)</div>
                 </div>
               </div>
             </div>
@@ -1346,19 +1421,8 @@
               </div>
             </div>
             <div class="wiring-row">
-              <div class="pin-badge d-pin">D1</div>
+              <div class="pin-badge d-pin">A4</div>
               <div class="wire yellow"></div>
-              <div class="component-badge">
-                <i class="fa-regular fa-clock"></i>
-                <div>
-                  <div class="comp-name">DS3231 RTC Module</div>
-                  <div class="comp-sub">Real-Time Clock → SCL (I²C Clock)</div>
-                </div>
-              </div>
-            </div>
-            <div class="wiring-row">
-              <div class="pin-badge d-pin">D2</div>
-              <div class="wire green"></div>
               <div class="component-badge">
                 <i class="fa-regular fa-clock"></i>
                 <div>
@@ -1368,13 +1432,46 @@
               </div>
             </div>
             <div class="wiring-row">
-              <div class="pin-badge v-pin">3.3V</div>
+              <div class="pin-badge d-pin">A5</div>
+              <div class="wire green"></div>
+              <div class="component-badge">
+                <i class="fa-regular fa-clock"></i>
+                <div>
+                  <div class="comp-name">DS3231 RTC Module</div>
+                  <div class="comp-sub">Real-Time Clock → SCL (I²C Clock)</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge d-pin">TX (D1)</div>
+              <div class="wire orange"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-right-left"></i>
+                <div>
+                  <div class="comp-name">ESP8266 Gateway RX</div>
+                  <div class="comp-sub">Serial data out → through a 5V→3.3V level divider</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge d-pin">RX (D0)</div>
+              <div class="wire gray"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-right-left"></i>
+                <div>
+                  <div class="comp-name">ESP8266 Gateway TX</div>
+                  <div class="comp-sub">Serial data in ← ESP8266 transmit line</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge v-pin">5V</div>
               <div class="wire red"></div>
               <div class="component-badge">
                 <i class="fa-solid fa-bolt"></i>
                 <div>
-                  <div class="comp-name">All Sensors VCC</div>
-                  <div class="comp-sub">Power: 3.3V → VCC of DHT &amp; Water Sensor</div>
+                  <div class="comp-name">Sensor Power</div>
+                  <div class="comp-sub">5V → VCC of DHT22, DS18B20 &amp; Water Sensor</div>
                 </div>
               </div>
             </div>
@@ -1384,14 +1481,46 @@
               <div class="component-badge">
                 <i class="fa-solid fa-minus"></i>
                 <div>
-                  <div class="comp-name">All Sensors Ground</div>
-                  <div class="comp-sub">Common Ground → GND of all modules</div>
+                  <div class="comp-name">Common Ground</div>
+                  <div class="comp-sub">Shared GND reference across the Arduino, ESP8266 &amp; sensors</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="wiring-note">
+            <i class="fa-solid fa-circle-info"></i>
+            <span>Pull-up resistor (4.7kΩ) required on the DHT22 DATA line and on the DS18B20 DQ line (1-Wire bus). The DS3231 RTC must be powered from the Arduino 3.3V pin — not 5V.</span>
+          </div>
+        </div>
+
+        <div class="esp-board">
+          <div class="esp-title">ESP8266 / NodeMCU — Wi-Fi Gateway</div>
+          <div class="esp-pins">
+            <div class="wiring-row">
+              <div class="pin-badge d-pin">D5</div>
+              <div class="wire orange"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-right-left"></i>
+                <div>
+                  <div class="comp-name">Arduino TX (via divider)</div>
+                  <div class="comp-sub">SoftwareSerial RX (GPIO14) ← Arduino serial out</div>
+                </div>
+              </div>
+            </div>
+            <div class="wiring-row">
+              <div class="pin-badge d-pin">D6</div>
+              <div class="wire gray"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-right-left"></i>
+                <div>
+                  <div class="comp-name">Arduino RX</div>
+                  <div class="comp-sub">SoftwareSerial TX (GPIO12) → Arduino serial in</div>
                 </div>
               </div>
             </div>
             <div class="wiring-row">
               <div class="pin-badge vin-pin">VIN</div>
-              <div class="wire orange"></div>
+              <div class="wire red"></div>
               <div class="component-badge">
                 <i class="fa-solid fa-battery-full"></i>
                 <div>
@@ -1400,10 +1529,21 @@
                 </div>
               </div>
             </div>
+            <div class="wiring-row">
+              <div class="pin-badge g-pin">GND</div>
+              <div class="wire gray"></div>
+              <div class="component-badge">
+                <i class="fa-solid fa-minus"></i>
+                <div>
+                  <div class="comp-name">Common Ground</div>
+                  <div class="comp-sub">Tied to the Arduino GND (shared ground reference)</div>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="wiring-note">
             <i class="fa-solid fa-circle-info"></i>
-            <span>Pull-up resistor (4.7kΩ) required on DHT DATA line. Water sensor DO pin optional — use AO for analog threshold detection.</span>
+            <span>The Arduino TX line must pass through a 5V→3.3V divider (e.g. 1kΩ / 2kΩ) — the ESP8266 is not 5V tolerant. Disconnect that line while flashing the ESP8266, and disable its onboard pull-ups if the RTC bus is shared.</span>
           </div>
         </div>
       </div>

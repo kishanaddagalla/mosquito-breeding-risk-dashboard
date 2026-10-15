@@ -64,6 +64,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   padding: 1rem 2rem;
   background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(16px);
@@ -100,6 +102,7 @@ body {
 
 .nav-links {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   list-style: none;
 }
@@ -1015,15 +1018,37 @@ body {
 
 .doc-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  /* minmax(0, 1fr) lets the content column shrink below its min-content width
+     so wide tables / code blocks / diagrams scroll internally instead of
+     blowing out the page (which caused clipped text). */
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 2rem;
   align-items: start;
+  min-width: 0;
 }
 
 @media (max-width: 900px) {
   .doc-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* Prevent grid/flex children from forcing horizontal overflow */
+.doc-body,
+.doc-toc-sidebar,
+.doc-card,
+.api-doc-box,
+.timeline-content {
+  min-width: 0;
+}
+
+.doc-card,
+.api-doc-box,
+.table-wrapper,
+.code-block,
+.arch-flow-diagram,
+.block-diagram-container {
+  max-width: 100%;
 }
 
 /* Sidebar TOC */
@@ -1036,6 +1061,17 @@ body {
   padding: 1.4rem;
   max-height: calc(100vh - 110px);
   overflow-y: auto;
+}
+
+/* Single-column docs (< 900px): the TOC must not stay sticky or it overlays
+   the content that scrolls beneath it. */
+@media (max-width: 900px) {
+  .doc-toc-sidebar {
+    position: static;
+    top: auto;
+    max-height: none;
+    overflow-y: visible;
+  }
 }
 
 .toc-title {
@@ -1862,6 +1898,7 @@ body {
 .wire.red { background: #ef4444; }
 .wire.gray { background: #64748b; }
 .wire.orange { background: #f97316; }
+.wire.purple { background: #a855f7; }
 .component-badge {
   display: flex; align-items: center; gap: 0.6rem;
   background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
@@ -1907,6 +1944,15 @@ body {
 .ops-list { display:flex; flex-direction:column; gap:.55rem; max-height:290px; overflow:auto; padding-right:.15rem; }.ops-row { display:flex; align-items:flex-start; gap:.65rem; padding:.72rem; border:1px solid rgba(255,255,255,.07); border-radius:10px; background:rgba(2,6,23,.22); }.ops-row>i { margin-top:.15rem; color:var(--accent-cyan); }.ops-row.high>i { color:var(--risk-high); }.ops-row.moderate>i { color:var(--risk-mod); }.ops-row div { flex:1; }.ops-row b,.ops-row small { display:block; }.ops-row b { color:var(--text-primary); font-size:.79rem; }.ops-row small { color:var(--text-secondary); font-size:.72rem; line-height:1.4; margin-top:.15rem; }.ops-row .btn-secondary { font-size:.68rem; padding:.35rem .5rem; }.status-chip { font-size:.62rem; font-weight:700; padding:.2rem .45rem; border-radius:99px; }.status-chip.OPEN { background:rgba(239,68,68,.16); color:#fca5a5; }.status-chip.SCHEDULED { background:rgba(245,158,11,.16); color:#fcd34d; }.status-chip.RESOLVED { background:rgba(16,185,129,.16); color:#6ee7b7; }.evidence-link { color:var(--accent-cyan); font-size:.7rem; display:inline-block; margin-top:.3rem; }
 .ops-form { display:flex; flex-direction:column; gap:.7rem; }.ops-form label { color:var(--text-secondary); font-size:.73rem; font-weight:600; }.ops-form input,.ops-form select,.ops-form textarea { display:block; width:100%; margin-top:.3rem; padding:.55rem .65rem; border:1px solid var(--border-card); border-radius:7px; background:rgba(2,6,23,.42); color:var(--text-primary); font:inherit; font-size:.78rem; outline:0; }.ops-form textarea { resize:vertical; }.ops-form input:focus,.ops-form select:focus,.ops-form textarea:focus { border-color:var(--accent-cyan); }.ops-form .btn-primary { align-self:flex-start; }.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:.65rem; }.empty-state { color:var(--text-muted); text-align:center; padding:2rem 1rem; font-size:.8rem; }
 @media(max-width:960px){.ops-kpis{grid-template-columns:repeat(2,1fr)}.ops-grid{grid-template-columns:1fr}}@media(max-width:600px){.ops-header{flex-direction:column}.ops-kpis{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.hero-insight{width:100%}}
+
+/* === Toast Notification Styles === */
+@keyframes slideInRight {
+  from { transform: translateX(100px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* === Weather Forecast Card === */
+.weather-content { min-height: 180px; }
 
 /* ==========================================================================
    SUNSET FIELD OPS THEME PREVIEW - remove this block to revert

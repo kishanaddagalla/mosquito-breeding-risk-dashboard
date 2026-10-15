@@ -80,6 +80,7 @@ def init_db():
             temperature REAL NOT NULL,
             humidity REAL NOT NULL,
             water_detected INTEGER NOT NULL,
+            water_temperature REAL,
             risk_level TEXT NOT NULL,
             risk_score INTEGER NOT NULL,
             risk_reason TEXT NOT NULL,
@@ -93,6 +94,8 @@ def init_db():
     columns = {row['name'] for row in cursor.execute('PRAGMA table_info(sensor_readings)')}
     if 'data_source' not in columns:
         cursor.execute("ALTER TABLE sensor_readings ADD COLUMN data_source TEXT NOT NULL DEFAULT 'unverified'")
+    if 'water_temperature' not in columns:
+        cursor.execute("ALTER TABLE sensor_readings ADD COLUMN water_temperature REAL")
     
     # System config table
     cursor.execute('''
@@ -195,7 +198,7 @@ def update_config(new_config):
     conn.commit()
     conn.close()
 
-def calculate_risk(temperature, humidity, water_detected, species='aedes'):
+def calculate_risk(temperature, humidity, water_detected, species='aedes', water_temperature=None):
     config = get_config()
     profile = SPECIES_PROFILES.get(species, SPECIES_PROFILES['aedes'])
     
@@ -219,17 +222,28 @@ def calculate_risk(temperature, humidity, water_detected, species='aedes'):
         reasons.append("Stagnant water detected (essential oviposition site)")
     else:
         reasons.append("No stagnant water detected")
+    
+    # Water Temperature Evaluation (DS18B20) - bonus points for warm water
+    if water_temperature is not None:
+        if 25.0 <= water_temperature <= 35.0:
+            score += 10
+            reasons.append(f"Water temperature ({water_temperature}°C) is optimal for larval development")
+        elif 20.0 <= water_temperature <= 40.0:
+            score += 5
+            reasons.append(f"Water temperature ({water_temperature}°C) supports larval growth")
+        else:
+            reasons.append(f"Water temperature ({water_temperature}°C) is suboptimal for larvae")
         
     # Temperature Evaluation
     if temp_opt_min <= temperature <= temp_opt_max:
         score += temp_weight
-        reasons.append(f"Temperature ({temperature}°C) is in optimal range for {profile['name']}")
+        reasons.append(f"Air temperature ({temperature}°C) is in optimal range for {profile['name']}")
     elif 18.0 <= temperature <= 38.0:
         score += int(temp_weight * 0.55)
-        reasons.append(f"Temperature ({temperature}°C) supports moderate growth rate")
+        reasons.append(f"Air temperature ({temperature}°C) supports moderate growth rate")
     else:
         score += int(temp_weight * 0.15)
-        reasons.append(f"Temperature ({temperature}°C) is suboptimal")
+        reasons.append(f"Air temperature ({temperature}°C) is suboptimal")
         
     # Humidity Evaluation
     if humidity >= humidity_opt:
@@ -250,9 +264,10 @@ def calculate_risk(temperature, humidity, water_detected, species='aedes'):
         risk_level = "LOW"
         
     # Calculate Biological Larval Hatching Incubation Duration
-    # Degree-day incubation estimation model
-    if temperature > 15.0:
-        est_incubation_days = round(max(3.0, profile['hatching_base_days'] * (28.0 / max(18.0, temperature))), 1)
+    # Use water temperature if available (more accurate for aquatic larvae), else air temperature
+    incubation_temp = water_temperature if water_temperature is not None else temperature
+    if incubation_temp > 15.0:
+        est_incubation_days = round(max(3.0, profile['hatching_base_days'] * (28.0 / max(18.0, incubation_temp))), 1)
     else:
         est_incubation_days = 14.0
 
@@ -264,20 +279,20 @@ def calculate_risk(temperature, humidity, water_detected, species='aedes'):
         "species_profile": profile['name']
     }
 
-def insert_reading(temperature, humidity, water_detected, node_id="NODE-01", rssi=-65, battery_level=88, species="aedes", timestamp=None, data_source='unverified'):
+def insert_reading(temperature, humidity, water_detected, node_id="NODE-01", rssi=-65, battery_level=88, species="aedes", timestamp=None, data_source='unverified', water_temperature=None):
     if timestamp is None:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-    risk = calculate_risk(temperature, humidity, water_detected, species=species)
+    risk = calculate_risk(temperature, humidity, water_detected, species=species, water_temperature=water_temperature)
     
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO sensor_readings 
-                (node_id, timestamp, temperature, humidity, water_detected, risk_level, risk_score, risk_reason, rssi, battery_level, species, data_source)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (node_id, timestamp, temperature, humidity, water_detected, water_temperature, risk_level, risk_score, risk_reason, rssi, battery_level, species, data_source)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (node_id, timestamp, float(temperature), float(humidity), 1 if water_detected else 0,
-                    risk['risk_level'], risk['risk_score'], risk['risk_reason'], int(rssi), int(battery_level), species, data_source))
+                    water_temperature, risk['risk_level'], risk['risk_score'], risk['risk_reason'], int(rssi), int(battery_level), species, data_source))
     
     reading_id = cursor.lastrowid
     conn.commit()
@@ -290,6 +305,7 @@ def insert_reading(temperature, humidity, water_detected, node_id="NODE-01", rss
         "temperature": temperature,
         "humidity": humidity,
         "water_detected": bool(water_detected),
+        "water_temperature": water_temperature,
         "risk_level": risk['risk_level'],
         "risk_score": risk['risk_score'],
         "risk_reason": risk['risk_reason'],
@@ -584,7 +600,8 @@ def get_latest_reading(node_id=None):
         return None
         
     species = row['species'] if 'species' in row.keys() else 'aedes'
-    risk = calculate_risk(row['temperature'], row['humidity'], bool(row['water_detected']), species=species)
+    water_temperature = row['water_temperature'] if 'water_temperature' in row.keys() else None
+    risk = calculate_risk(row['temperature'], row['humidity'], bool(row['water_detected']), species=species, water_temperature=water_temperature)
     
     return {
         "id": row['id'],
@@ -593,6 +610,7 @@ def get_latest_reading(node_id=None):
         "temperature": row['temperature'],
         "humidity": row['humidity'],
         "water_detected": bool(row['water_detected']),
+        "water_temperature": water_temperature,
         "risk_level": risk['risk_level'],
         "risk_score": risk['risk_score'],
         "risk_reason": risk['risk_reason'],
@@ -613,12 +631,14 @@ def get_multi_nodes_status():
         cursor.execute("SELECT * FROM sensor_readings WHERE node_id = ? AND data_source = 'hardware' ORDER BY id DESC LIMIT 1", (n['node_id'],))
         row = cursor.fetchone()
         if row:
-            risk = calculate_risk(row['temperature'], row['humidity'], bool(row['water_detected']))
+            node_water_temp = row['water_temperature'] if 'water_temperature' in row.keys() else None
+            risk = calculate_risk(row['temperature'], row['humidity'], bool(row['water_detected']), water_temperature=node_water_temp)
             results.append({
                 **n,
                 "temperature": row['temperature'],
                 "humidity": row['humidity'],
                 "water_detected": bool(row['water_detected']),
+                "water_temperature": node_water_temp,
                 "risk_level": risk['risk_level'],
                 "risk_score": risk['risk_score'],
                 "last_sync": row['timestamp'],
@@ -739,11 +759,13 @@ def seed_sample_data(conn):
             else:
                 continue
                 
-            risk = calculate_risk(temp, hum, bool(water))
+            water_temp = round(27.0 + random.uniform(-2.0, 3.0), 1)
+            
+            risk = calculate_risk(temp, hum, bool(water), water_temperature=water_temp)
             cursor.execute('''
                 INSERT INTO sensor_readings 
-                (node_id, timestamp, temperature, humidity, water_detected, risk_level, risk_score, risk_reason, rssi, battery_level, species)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (n['node_id'], ts, temp, hum, water, risk['risk_level'], risk['risk_score'], risk['risk_reason'], rssi, battery, 'aedes'))
+                (node_id, timestamp, temperature, humidity, water_detected, water_temperature, risk_level, risk_score, risk_reason, rssi, battery_level, species)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (n['node_id'], ts, temp, hum, water, water_temp, risk['risk_level'], risk['risk_score'], risk['risk_reason'], rssi, battery, 'aedes'))
             
     conn.commit()

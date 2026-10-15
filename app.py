@@ -68,11 +68,18 @@ def receive_sensor_data():
         "temperature": 28.5,
         "humidity": 78.0,
         "water_detected": true,
+        "water_temperature": 27.5,    (optional, DS18B20 water probe)
+        "timestamp": "2026-10-15 19:30:00",  (optional, DS3231 RTC device time)
         "node_id": "NODE-01",       (optional, default NODE-01)
         "rssi": -65,                 (optional, Wi-Fi signal strength dBm)
         "battery_level": 88,         (optional, battery percentage)
         "species": "aedes"           (optional, aedes/culex/anopheles)
     }
+
+    When "timestamp" is supplied (from the node's DS3231 RTC) it becomes the
+    authoritative reading time, so offline/batched uploads keep their real
+    measurement time. If omitted or malformed-free but absent, the server
+    falls back to its own clock.
     """
     global last_hardware_ping_time
     try:
@@ -83,6 +90,7 @@ def receive_sensor_data():
         temperature = data.get('temperature')
         humidity = data.get('humidity')
         water_detected = data.get('water_detected')
+        water_temperature = data.get('water_temperature')
         
         # Validation
         if temperature is None or humidity is None or water_detected is None:
@@ -99,6 +107,10 @@ def receive_sensor_data():
             raise ValueError("temperature must be between -20 and 70°C")
         if not 0.0 <= humidity <= 100.0:
             raise ValueError("humidity must be between 0 and 100%")
+        if water_temperature is not None:
+            water_temperature = float(water_temperature)
+            if not 0.0 <= water_temperature <= 50.0:
+                raise ValueError("water_temperature must be between 0 and 50°C")
         
         # Optional hardware diagnostic fields
         node_id = data.get('node_id', 'NODE-01')
@@ -107,7 +119,18 @@ def receive_sensor_data():
         species = str(data.get('species', 'aedes')).lower()
         if species not in database.SPECIES_PROFILES:
             raise ValueError("species must be aedes, culex, or anopheles")
-        
+
+        # Optional DS3231 RTC device timestamp - authoritative when provided.
+        device_timestamp = data.get('timestamp')
+        if device_timestamp is not None and str(device_timestamp).strip() != '':
+            try:
+                parsed_ts = datetime.strptime(str(device_timestamp).strip(), '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                raise ValueError("timestamp must be formatted 'YYYY-MM-DD HH:MM:SS'")
+            device_timestamp = parsed_ts.strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            device_timestamp = None
+
         # Mark hardware ping timestamp
         last_hardware_ping_time = datetime.now()
 
@@ -115,7 +138,9 @@ def receive_sensor_data():
         reading = database.insert_reading(temperature, humidity, water_detected,
                                           node_id=node_id, rssi=rssi,
                                           battery_level=battery_level, species=species,
-                                          data_source='hardware')
+                                          data_source='hardware',
+                                          water_temperature=water_temperature,
+                                          timestamp=device_timestamp)
         database.create_alert_for_reading(reading)
         
         return jsonify({
@@ -203,18 +228,21 @@ def simulate_reading():
         temp = round(random.uniform(28.0, 31.5), 1)
         hum = round(random.uniform(75.0, 88.0), 1)
         water = True
+        water_temp = round(random.uniform(26.0, 32.0), 1)
         rssi = random.randint(-80, -55)
         battery = random.randint(70, 95)
     elif mode == 'moderate_risk':
         temp = round(random.uniform(24.0, 27.0), 1)
         hum = round(random.uniform(55.0, 68.0), 1)
         water = random.choice([True, False])
+        water_temp = round(random.uniform(22.0, 28.0), 1) if water else None
         rssi = random.randint(-85, -60)
         battery = random.randint(60, 90)
     elif mode == 'low_risk':
         temp = round(random.uniform(18.0, 22.0), 1)
         hum = round(random.uniform(35.0, 48.0), 1)
         water = False
+        water_temp = None
         rssi = random.randint(-90, -65)
         battery = random.randint(40, 85)
     else:
@@ -224,16 +252,18 @@ def simulate_reading():
             temp = round(max(15.0, min(42.0, latest['temperature'] + random.uniform(-1.2, 1.2))), 1)
             hum = round(max(30.0, min(95.0, latest['humidity'] + random.uniform(-3.0, 3.0))), 1)
             water = random.choice([True, False, latest['water_detected']])
+            water_temp = round(max(15.0, min(40.0, (latest.get('water_temperature') or 25.0) + random.uniform(-1.5, 1.5))), 1) if water else None
         else:
             temp = 28.0
             hum = 75.0
             water = True
+            water_temp = 27.0
         rssi = random.randint(-85, -50)
         battery = random.randint(60, 100)
 
     reading = database.insert_reading(temp, hum, water, node_id=node_id,
                                       rssi=rssi, battery_level=battery, species=species,
-                                      data_source='simulation')
+                                      data_source='simulation', water_temperature=water_temp)
     database.create_alert_for_reading(reading)
     return jsonify({"status": "success", "message": f"Simulated {mode} reading generated", "data": reading})
 
@@ -353,4 +383,5 @@ def manage_calibrations():
 
 if __name__ == '__main__':
     print("[MOSQUITO DETECT] Starting Mosquito Breeding Risk Detection System Server...")
-    app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
+    # host='0.0.0.0' lets the ESP8266 node reach the API over Wi-Fi (LAN).
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
